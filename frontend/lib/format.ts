@@ -40,11 +40,11 @@ export function formatHRV(hrv: number | null): string {
 }
 
 export function formatSleepScore(score: number | null): { text: string; color: string } {
-  if (score === null) return { text: "—", color: "text-zinc-400" };
-  if (score >= 85) return { text: `${score}`, color: "text-emerald-600" };
-  if (score >= 70) return { text: `${score}`, color: "text-zinc-900" };
-  if (score >= 55) return { text: `${score}`, color: "text-amber-600" };
-  return { text: `${score}`, color: "text-rose-600" };
+  if (score === null) return { text: "—", color: "text-muted-foreground" };
+  if (score >= 85) return { text: `${score}`, color: "text-[--status-positive]" };
+  if (score >= 70) return { text: `${score}`, color: "text-foreground" };
+  if (score >= 55) return { text: `${score}`, color: "text-[--status-caution]" };
+  return { text: `${score}`, color: "text-[--status-negative]" };
 }
 
 export function formatDate(iso: string): string {
@@ -70,14 +70,14 @@ const DISCIPLINE_META: Record<
   Discipline,
   { label: string; icon: string; color: string }
 > = {
-  RUN: { label: "Run", icon: "🏃", color: "bg-orange-100 text-orange-700" },
-  SWIM: { label: "Swim", icon: "🏊", color: "bg-blue-100 text-blue-700" },
-  RIDE_ROAD: { label: "Road Ride", icon: "🚴", color: "bg-green-100 text-green-700" },
-  RIDE_GRAVEL: { label: "Gravel Ride", icon: "🚵", color: "bg-lime-100 text-lime-700" },
-  STRENGTH: { label: "Strength", icon: "🏋️", color: "bg-purple-100 text-purple-700" },
-  YOGA: { label: "Yoga", icon: "🧘", color: "bg-pink-100 text-pink-700" },
-  MOBILITY: { label: "Mobility", icon: "🤸", color: "bg-rose-100 text-rose-700" },
-  OTHER: { label: "Other", icon: "⚡", color: "bg-zinc-100 text-zinc-600" },
+  RUN: { label: "Run", icon: "🏃", color: "bg-orange-500/15 text-orange-400" },
+  SWIM: { label: "Swim", icon: "🏊", color: "bg-blue-500/15 text-blue-400" },
+  RIDE_ROAD: { label: "Road Ride", icon: "🚴", color: "bg-violet-500/15 text-violet-400" },
+  RIDE_GRAVEL: { label: "Gravel Ride", icon: "🚵", color: "bg-amber-500/15 text-amber-400" },
+  STRENGTH: { label: "Strength", icon: "🏋️", color: "bg-rose-500/15 text-rose-400" },
+  YOGA: { label: "Yoga", icon: "🧘", color: "bg-teal-500/15 text-teal-400" },
+  MOBILITY: { label: "Mobility", icon: "🤸", color: "bg-cyan-500/15 text-cyan-400" },
+  OTHER: { label: "Other", icon: "⚡", color: "bg-zinc-500/15 text-zinc-400" },
 };
 
 export function getDisciplineMeta(d: Discipline) {
@@ -144,9 +144,9 @@ export function formatChartDate(dateStr: string): string {
  * - other  → zinc (neutral / unknown)
  */
 export function getTrendColor(direction: string): string {
-  if (direction === "up") return "text-emerald-600";
-  if (direction === "down") return "text-rose-500";
-  return "text-zinc-400";
+  if (direction === "up") return "text-[--status-positive]";
+  if (direction === "down") return "text-[--status-negative]";
+  return "text-muted-foreground";
 }
 
 /**
@@ -166,34 +166,34 @@ export function getTrendLabel(direction: string): string {
 
 /** Tailwind badge classes for each recovery status value. */
 const RECOVERY_STATUS_COLORS: Record<string, string> = {
-  strong: "bg-emerald-50 text-emerald-700",
-  strained: "bg-rose-50 text-rose-700",
-  steady: "bg-amber-50 text-amber-700",
+  strong: "bg-[--status-positive]/15 text-[--status-positive]",
+  strained: "bg-[--status-negative]/15 text-[--status-negative]",
+  steady: "bg-[--status-caution]/15 text-[--status-caution]",
 };
 
 /**
  * Return the Tailwind badge classes for a recovery status string.
- * Falls back to a neutral zinc style for unknown values.
+ * Falls back to a neutral muted style for unknown values.
  */
 export function getRecoveryStatusColor(status: string): string {
-  return RECOVERY_STATUS_COLORS[status] ?? "bg-zinc-100 text-zinc-500";
+  return RECOVERY_STATUS_COLORS[status] ?? "bg-muted text-muted-foreground";
 }
 
 /** Tailwind badge classes for each activity status value. */
 const ACTIVITY_STATUS_COLORS: Record<string, string> = {
-  building: "bg-emerald-50 text-emerald-700",
-  overreaching: "bg-rose-50 text-rose-700",
-  idle: "bg-zinc-100 text-zinc-500",
-  lighter: "bg-amber-50 text-amber-700",
-  steady: "bg-amber-50 text-amber-700",
+  building: "bg-[--status-positive]/15 text-[--status-positive]",
+  overreaching: "bg-[--status-negative]/15 text-[--status-negative]",
+  idle: "bg-muted text-muted-foreground",
+  lighter: "bg-[--status-caution]/15 text-[--status-caution]",
+  steady: "bg-[--status-caution]/15 text-[--status-caution]",
 };
 
 /**
  * Return the Tailwind badge classes for an activity status string.
- * Falls back to a neutral zinc style for unknown values.
+ * Falls back to a neutral muted style for unknown values.
  */
 export function getActivityStatusColor(status: string): string {
-  return ACTIVITY_STATUS_COLORS[status] ?? "bg-zinc-100 text-zinc-500";
+  return ACTIVITY_STATUS_COLORS[status] ?? "bg-muted text-muted-foreground";
 }
 
 export interface DeltaBadge {
@@ -227,6 +227,6 @@ export function calculateDelta(
   const text = unit ? `${sign}${formatted}${unit}` : `${sign}${formatted}`;
   return {
     text,
-    color: diff > 0 ? "text-emerald-600" : "text-rose-500",
+    color: diff > 0 ? "text-[--status-positive]" : "text-[--status-negative]",
   };
 }

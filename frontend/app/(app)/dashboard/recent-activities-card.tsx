@@ -19,14 +19,14 @@ export function RecentActivitiesCard({ activities }: Props) {
   return (
     <Card className="shadow-sm">
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
-        <CardTitle className="text-sm font-medium text-zinc-600">Recent activities</CardTitle>
-        <Link href="/activities" className="text-xs text-zinc-400 hover:text-zinc-600">
+        <CardTitle className="text-sm font-medium text-muted-foreground">Recent activities</CardTitle>
+        <Link href="/activities" className="text-xs text-muted-foreground hover:text-foreground">
           View all →
         </Link>
       </CardHeader>
       <CardContent>
         {activities.length === 0 ? (
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted-foreground">
             No activities yet.{" "}
             <Link href="/settings" className="underline">
               Connect your Garmin
@@ -34,14 +34,14 @@ export function RecentActivitiesCard({ activities }: Props) {
             and sync.
           </p>
         ) : (
-          <ul className="divide-y divide-zinc-100">
+          <ul className="divide-y divide-border">
             {activities.map((a) => {
               const { label, icon, color } = getDisciplineMeta(a.discipline);
               return (
                 <li key={a.id}>
                   <Link
                     href={`/activities/${a.id}`}
-                    className="flex items-center gap-3 py-2.5 hover:bg-zinc-50 rounded px-1 -mx-1 transition-colors"
+                    className="flex items-center gap-3 py-2.5 hover:bg-muted rounded px-1 -mx-1 transition-colors"
                   >
                     <span
                       className={`w-8 h-8 flex items-center justify-center rounded-full text-base ${color}`}
@@ -52,11 +52,11 @@ export function RecentActivitiesCard({ activities }: Props) {
                       <p className="text-sm font-medium truncate">
                         {a.name || label}
                       </p>
-                      <p className="text-xs text-zinc-400">
+                      <p className="text-xs text-muted-foreground">
                         {formatRelativeDate(a.start_time)} · {formatDuration(a.duration_seconds)}
                       </p>
                     </div>
-                    <span className="text-sm text-zinc-600 font-medium whitespace-nowrap">
+                    <span className="text-sm text-muted-foreground font-medium tabular-nums whitespace-nowrap">
                       {primaryStat(a)}
                     </span>
                   </Link>

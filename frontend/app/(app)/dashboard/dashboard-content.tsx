@@ -174,12 +174,12 @@ export function DashboardContent() {
     return `Last synced ${Math.floor(hours / 24)}d ago`;
   }
 
-  if (loading) return <div className="text-zinc-400 text-sm">Loading…</div>;
+  if (loading) return <div className="text-muted-foreground text-sm">Loading…</div>;
 
   if (loadError || !data) {
     return (
-      <div className="flex flex-col items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-5">
-        <p className="text-sm font-medium text-rose-700">{loadError ?? "Failed to load dashboard."}</p>
+      <div className="flex flex-col items-start gap-3 rounded-2xl border border-[--status-negative]/20 bg-[--status-negative]/10 p-5">
+        <p className="text-sm font-medium text-[--status-negative]">{loadError ?? "Failed to load dashboard."}</p>
         <Button variant="outline" size="sm" onClick={() => { setLoading(true); void loadDashboard().finally(() => setLoading(false)); }}>
           Retry
         </Button>
@@ -189,15 +189,15 @@ export function DashboardContent() {
 
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
-      <div className="flex flex-col gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-zinc-500">{formatLastSync(data.last_sync_at)}</p>
+      <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">{formatLastSync(data.last_sync_at)}</p>
         <Button variant="outline" size="sm" onClick={() => void syncLastWeek()} disabled={syncing}>
           {syncing ? "Syncing…" : "Sync Now"}
         </Button>
       </div>
 
       {syncing && (
-        <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700 shadow-sm">
+        <div className="flex items-center gap-2 rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary shadow-sm">
           <span className="inline-block animate-spin text-base">↻</span>
           Syncing Garmin data…
         </div>
@@ -207,8 +207,8 @@ export function DashboardContent() {
         <div
           className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm shadow-sm ${
             syncNotice.tone === "error"
-              ? "border-rose-200 bg-rose-50 text-rose-700"
-              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+              ? "border-[--status-negative]/30 bg-[--status-negative]/10 text-[--status-negative]"
+              : "border-[--status-positive]/30 bg-[--status-positive]/10 text-[--status-positive]"
           }`}
         >
           <span>{syncNotice.tone === "error" ? "!" : "✓"}</span>

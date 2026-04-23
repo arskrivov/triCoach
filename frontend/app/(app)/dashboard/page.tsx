@@ -6,8 +6,8 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-7xl p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-zinc-950">Dashboard</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Recovery, training direction, and today&apos;s coaching readout in one place.
         </p>
       </div>

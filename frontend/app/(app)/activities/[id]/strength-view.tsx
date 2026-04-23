@@ -28,7 +28,7 @@ export function StrengthView({ exercises, muscleGroups }: Props) {
           <CardContent>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-zinc-400 border-b border-zinc-100">
+                <tr className="text-xs text-muted-foreground border-b border-border">
                   <th className="text-left pb-1 font-medium">Set</th>
                   <th className="text-right pb-1 font-medium">Reps</th>
                   <th className="text-right pb-1 font-medium">Weight</th>
@@ -37,13 +37,13 @@ export function StrengthView({ exercises, muscleGroups }: Props) {
               </thead>
               <tbody>
                 {ex.sets.map((set, i) => (
-                  <tr key={i} className="border-b border-zinc-50 last:border-0">
-                    <td className="py-1.5 text-zinc-400">{i + 1}</td>
+                  <tr key={i} className="border-b border-border/50 last:border-0">
+                    <td className="py-1.5 text-muted-foreground">{i + 1}</td>
                     <td className="py-1.5 text-right">{set.reps ?? "—"}</td>
                     <td className="py-1.5 text-right">
                       {set.weight_kg != null ? `${set.weight_kg} kg` : "—"}
                     </td>
-                    <td className="py-1.5 text-right text-zinc-400">
+                    <td className="py-1.5 text-right text-muted-foreground">
                       {set.rpe ?? "—"}
                     </td>
                   </tr>
@@ -51,7 +51,7 @@ export function StrengthView({ exercises, muscleGroups }: Props) {
               </tbody>
             </table>
             {ex.sets.some((s) => s.weight_kg && s.reps) && (
-              <p className="text-xs text-zinc-400 mt-2">
+              <p className="text-xs text-muted-foreground mt-2">
                 Volume:{" "}
                 {ex.sets
                   .reduce(

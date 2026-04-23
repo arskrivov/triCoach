@@ -189,40 +189,40 @@ export default function CoachPage() {
     <div className="flex h-screen overflow-hidden">
       {/* Mobile goals backdrop */}
       <div
-        className={`fixed inset-0 z-40 bg-zinc-950/20 transition-opacity lg:hidden ${goalsOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        className={`fixed inset-0 z-40 bg-black/40 transition-opacity lg:hidden ${goalsOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
         onClick={() => setGoalsOpen(false)}
       />
 
       {/* Goals sidebar — persistent on desktop, slide-out overlay on mobile */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-white border-r transition-transform duration-200 lg:relative lg:z-auto lg:translate-x-0 lg:shrink-0 ${goalsOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-card border-r border-border transition-transform duration-200 lg:relative lg:z-auto lg:translate-x-0 lg:shrink-0 ${goalsOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="p-4 border-b flex items-center justify-between">
           <h2 className="font-semibold text-sm">Goals</h2>
           <button
             type="button"
             onClick={() => setGoalsOpen(false)}
-            className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 lg:hidden"
+            className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Close
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
           {goals.length === 0 && (
-            <p className="text-xs text-zinc-400 text-center py-4">No goals yet. Add one below.</p>
+            <p className="text-xs text-muted-foreground text-center py-4">No goals yet. Add one below.</p>
           )}
           {goals.map((g) => (
-            <div key={g.id} className="p-2.5 border border-zinc-100 rounded-lg group">
+            <div key={g.id} className="p-2.5 border border-border rounded-lg group">
               <div className="flex items-start justify-between gap-1">
                 <p className="text-sm font-medium leading-tight flex-1">{g.description}</p>
                 <button onClick={() => deleteGoal(g.id)}
-                  className="text-zinc-300 hover:text-red-400 opacity-0 group-hover:opacity-100 text-base leading-none shrink-0">
+                  className="text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 text-base leading-none shrink-0">
                   ×
                 </button>
               </div>
-              <span className={`mt-1 inline-block text-xs px-1.5 py-0.5 rounded-full font-medium ${g.is_active ? "bg-green-100 text-green-700" : "bg-zinc-100 text-zinc-500"}`}>
+              <span className={`mt-1 inline-block text-xs px-1.5 py-0.5 rounded-full font-medium ${g.is_active ? "bg-[--status-positive]/15 text-[--status-positive]" : "bg-muted text-muted-foreground"}`}>
                 {g.is_active ? "active" : "done"}
               </span>
               {g.target_date && (
-                <p className="text-xs text-zinc-400 mt-0.5">by {g.target_date}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">by {g.target_date}</p>
               )}
             </div>
           ))}
@@ -241,23 +241,23 @@ export default function CoachPage() {
 
       {/* Chat */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center justify-between px-6 py-3 border-b bg-white">
+        <div className="flex items-center justify-between px-6 py-3 border-b bg-card">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setGoalsOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 hover:text-zinc-900 lg:hidden"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
               aria-label="Open goals"
             >
               🎯 Goals
             </button>
             <div>
-              <h1 className="font-semibold">AI Coach</h1>
-              <p className="text-xs text-zinc-400">Powered by ChatGPT · context includes your last 90 days</p>
+              <h1 className="font-semibold text-foreground">AI Coach</h1>
+              <p className="text-xs text-muted-foreground">Powered by ChatGPT · context includes your last 90 days</p>
             </div>
           </div>
           {messages.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={clearHistory} className="text-zinc-400 hover:text-zinc-700">
+            <Button variant="ghost" size="sm" onClick={clearHistory} className="text-muted-foreground hover:text-foreground">
               Clear history
             </Button>
           )}
@@ -266,7 +266,7 @@ export default function CoachPage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 pb-24 lg:pb-4 flex flex-col gap-4">
           {messages.length === 0 && !streaming && (
-            <div className="text-center py-16 text-zinc-400">
+            <div className="text-center py-16 text-muted-foreground">
               <p className="text-4xl mb-3">🤖</p>
               <p className="font-medium">Your personal triathlon coach</p>
               <p className="text-sm mt-1">Ask about your training, recovery, race plans, or technique.</p>
@@ -278,7 +278,7 @@ export default function CoachPage() {
                   "Review my last week",
                 ].map((s) => (
                   <button key={s} onClick={() => { setInput(s); }}
-                    className="text-sm px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded-full transition-colors">
+                    className="text-sm px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     {s}
                   </button>
                 ))}
@@ -290,17 +290,17 @@ export default function CoachPage() {
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
                 msg.role === "user"
-                  ? "bg-zinc-900 text-white rounded-br-sm"
-                  : "bg-white border border-zinc-100 text-zinc-800 rounded-bl-sm"
+                  ? "bg-primary text-primary-foreground rounded-br-sm"
+                  : "bg-card border border-border text-foreground rounded-bl-sm"
               }`}>
                 {msg.role === "assistant" && msg.content === "" ? (
                   <span className="inline-flex gap-1">
-                    <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:0ms]" />
-                    <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:150ms]" />
-                    <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:0ms]" />
+                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:150ms]" />
+                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:300ms]" />
                   </span>
                 ) : msg.role === "assistant" ? (
-                  <div className="prose prose-sm max-w-none prose-headings:mb-2 prose-headings:mt-0 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-strong:text-zinc-900">
+                  <div className="prose prose-sm prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-0 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-strong:text-foreground">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
@@ -313,7 +313,7 @@ export default function CoachPage() {
         </div>
 
         {/* Input */}
-        <div className="px-6 py-4 border-t bg-white fixed bottom-0 left-0 right-0 lg:relative lg:bottom-auto">
+        <div className="px-6 py-4 border-t border-border bg-card fixed bottom-0 left-0 right-0 lg:relative lg:bottom-auto">
           <div className="flex gap-2 max-w-3xl mx-auto">
             <Input
               value={input}

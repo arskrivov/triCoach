@@ -58,7 +58,7 @@ export function WorkoutList() {
               setFilter(f.value);
             }}
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              filter === f.value ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+              filter === f.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
           >
             {f.label}
@@ -67,9 +67,9 @@ export function WorkoutList() {
       </div>
 
       {loading ? (
-        <p className="text-zinc-400 text-sm">Loading…</p>
+        <p className="text-muted-foreground text-sm">Loading…</p>
       ) : workouts.length === 0 ? (
-        <div className="text-center py-16 text-zinc-400">
+        <div className="text-center py-16 text-muted-foreground">
           <p className="mb-3">No workouts yet.</p>
           <Link href="/workouts/new">
             <Button variant="outline" size="sm">Create your first workout</Button>
@@ -82,7 +82,7 @@ export function WorkoutList() {
             return (
               <div
                 key={w.id}
-                className="flex items-center gap-4 p-4 bg-white border border-zinc-100 rounded-xl hover:border-zinc-300 transition-all"
+                className="flex items-center gap-4 p-4 bg-card border border-border rounded-xl hover:border-primary/30 transition-all"
               >
                 <span className={`w-10 h-10 flex items-center justify-center rounded-full text-lg shrink-0 ${color}`}>
                   {icon}
@@ -90,7 +90,7 @@ export function WorkoutList() {
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{w.name}</p>
                   <div className="flex gap-2 mt-0.5">
-                    <span className="text-xs text-zinc-400">{w.builder_type}</span>
+                    <span className="text-xs text-muted-foreground">{w.builder_type}</span>
                     {w.is_template && <Badge variant="secondary" className="text-xs py-0">template</Badge>}
                     {!w.is_template && w.scheduled_date && (
                       <Badge variant="outline" className="text-xs py-0">
@@ -98,7 +98,7 @@ export function WorkoutList() {
                       </Badge>
                     )}
                     {w.estimated_duration_seconds && (
-                      <span className="text-xs text-zinc-400">
+                      <span className="text-xs text-muted-foreground">
                         ~{formatDuration(w.estimated_duration_seconds)}
                       </span>
                     )}

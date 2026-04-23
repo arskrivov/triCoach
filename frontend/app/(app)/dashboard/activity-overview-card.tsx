@@ -53,8 +53,8 @@ function formatIntensity(d: DisciplineSummary, discipline: Discipline): { label:
   }
 }
 
-const SECTION_LABEL_CLASS = "text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400";
-const ANALYSIS_TEXT_CLASS = "text-sm leading-7 text-zinc-600";
+const SECTION_LABEL_CLASS = "text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground";
+const ANALYSIS_TEXT_CLASS = "text-sm leading-7 text-muted-foreground";
 
 // Human-readable status labels
 const STATUS_LABELS: Record<string, string> = {
@@ -90,34 +90,34 @@ function DisciplineRow({ label, icon, discipline, current, previous, showDistanc
   const intensity = formatIntensity(current, discipline);
 
   return (
-    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 ${hasVo2 ? "lg:grid lg:grid-cols-[1.8fr_0.7fr_0.9fr_0.8fr_0.9fr_0.8fr]" : "lg:grid lg:grid-cols-[1.8fr_0.7fr_0.9fr_0.8fr_0.9fr]"} lg:gap-2 rounded-xl border border-zinc-100 px-3 py-2.5 text-sm`}>
-      <p className="w-full lg:w-auto font-medium text-zinc-700">
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 ${hasVo2 ? "lg:grid lg:grid-cols-[1.8fr_0.7fr_0.9fr_0.8fr_0.9fr_0.8fr]" : "lg:grid lg:grid-cols-[1.8fr_0.7fr_0.9fr_0.8fr_0.9fr]"} lg:gap-2 rounded-xl border border-border px-3 py-2.5 text-sm`}>
+      <p className="w-full lg:w-auto font-medium text-foreground">
         {icon} {label}
       </p>
       <div className="w-auto">
         <p className={SECTION_LABEL_CLASS}>CW Sessions</p>
-        <p className="font-semibold text-zinc-900">{current.sessions > 0 ? current.sessions : "—"}</p>
+        <p className="font-semibold text-foreground">{current.sessions > 0 ? current.sessions : "—"}</p>
       </div>
       <div className="w-auto">
         <p className={SECTION_LABEL_CLASS}>{showDistance ? "CW Distance" : "CW Duration"}</p>
-        <p className="font-semibold text-zinc-900">{current.sessions > 0 ? distanceOrDuration : "—"}</p>
+        <p className="font-semibold tabular-nums text-foreground">{current.sessions > 0 ? distanceOrDuration : "—"}</p>
       </div>
       <div className="w-auto">
         <p className={SECTION_LABEL_CLASS}>vs Prev Wk</p>
         {delta ? (
           <p className={`font-semibold ${delta.color}`}>{delta.text}</p>
         ) : (
-          <p className="text-zinc-400">—</p>
+          <p className="text-muted-foreground">—</p>
         )}
       </div>
       <div className="w-auto">
         <p className={SECTION_LABEL_CLASS}>CW {intensity.label}</p>
-        <p className="font-semibold text-zinc-900">{intensity.value}</p>
+        <p className="font-semibold tabular-nums text-foreground">{intensity.value}</p>
       </div>
       {hasVo2 && (
         <div className="w-auto">
           <p className={SECTION_LABEL_CLASS}>VO₂max</p>
-          <p className="font-semibold text-zinc-900">
+          <p className="font-semibold tabular-nums text-foreground">
             {vo2max != null ? vo2max.toFixed(0) : "—"}
           </p>
         </div>
@@ -138,7 +138,7 @@ export function ActivityOverviewCard({
   const { last_7d, fitness } = activity;
   const analysisText = analysis ?? activity.headline;
   const tsb = fitness.tsb;
-  const tsbTone = tsb == null ? "text-zinc-400" : tsb >= 0 ? "text-emerald-600" : tsb >= -10 ? "text-sky-600" : tsb >= -30 ? "text-amber-600" : "text-rose-500";
+  const tsbTone = tsb == null ? "text-muted-foreground" : tsb >= 0 ? "text-[--status-positive]" : tsb >= -10 ? "text-sky-600" : tsb >= -30 ? "text-[--status-caution]" : "text-[--status-negative]";
   const statusLabel = STATUS_LABELS[activity.status] ?? activity.status;
 
   return (
@@ -179,6 +179,7 @@ export function ActivityOverviewCard({
             value={tsb != null ? `${tsb > 0 ? "+" : ""}${tsb.toFixed(0)}` : "—"}
             subtitle="Fitness − Fatigue"
             valueClassName={tsbTone}
+            className="shadow-[0_0_12px_oklch(0.55_0.2_270_/_0.15)]"
           />
           <DashboardMetricTile
             label="Sessions 7d"

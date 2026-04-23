@@ -80,7 +80,7 @@ export function AthleteProfileCard() {
               <Label htmlFor={key} className="text-sm">
                 {label}{unit ? ` (${unit})` : ""}
               </Label>
-              {hint && <p className="text-xs text-zinc-400 mb-1">{hint}</p>}
+              {hint && <p className="text-xs text-muted-foreground mb-1">{hint}</p>}
               <Input
                 id={key}
                 type="number"
@@ -96,7 +96,7 @@ export function AthleteProfileCard() {
           <Button onClick={save} disabled={saving}>
             {saving ? "Saving…" : "Save profile"}
           </Button>
-          {saved && <span className="text-sm text-green-600">Saved!</span>}
+          {saved && <span className="text-sm text-[--status-positive]">Saved!</span>}
         </div>
       </CardContent>
     </Card>

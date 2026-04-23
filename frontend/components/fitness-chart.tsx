@@ -36,27 +36,27 @@ function getFormZone(tsb: number): FormZone {
   if (tsb > 10) {
     return {
       label: "Fresh",
-      tone: "bg-emerald-50 text-emerald-700",
+      tone: "bg-[--status-positive]/15 text-[--status-positive]",
       description: "Form is positive — good window for a race, key session, or taper.",
     };
   }
   if (tsb >= -10) {
     return {
       label: "Balanced",
-      tone: "bg-sky-50 text-sky-700",
+      tone: "bg-primary/15 text-primary",
       description: "Fitness and fatigue are in balance. Normal training is appropriate.",
     };
   }
   if (tsb >= -30) {
     return {
       label: "Productive load",
-      tone: "bg-amber-50 text-amber-700",
+      tone: "bg-[--status-caution]/15 text-[--status-caution]",
       description: "Fatigue is elevated but within a healthy build range.",
     };
   }
   return {
     label: "High fatigue",
-    tone: "bg-rose-50 text-rose-700",
+    tone: "bg-[--status-negative]/15 text-[--status-negative]",
     description: "Fatigue is far above fitness. Prioritise recovery before the next hard session.",
   };
 }
@@ -89,33 +89,33 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
     <>
       {/* Header */}
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-900">Fitness &amp; Form</h2>
-        <div className="flex flex-wrap gap-3 text-xs text-zinc-400">
+        <h2 className="text-sm font-semibold text-foreground">Fitness &amp; Form</h2>
+        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-3 rounded bg-indigo-500" />
+            <span className="inline-block h-0.5 w-3 rounded" style={{ backgroundColor: "oklch(0.70 0.15 265)" }} />
             Fitness (CTL)
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-3 rounded bg-amber-400" />
+            <span className="inline-block h-0.5 w-3 rounded" style={{ backgroundColor: "oklch(0.78 0.15 85)" }} />
             Fatigue (ATL)
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-3 rounded bg-emerald-500" />
+            <span className="inline-block h-0.5 w-3 rounded" style={{ backgroundColor: "oklch(0.75 0.15 180)" }} />
             Form (TSB)
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-sm bg-zinc-200" />
+            <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: "oklch(1 0 0 / 10%)" }} />
             Daily load
           </span>
         </div>
       </div>
 
       {/* Current form badge */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-100 bg-zinc-50 px-3 py-2 text-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-muted px-3 py-2 text-sm">
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${formZone.tone}`}>
           {formZone.label}
         </span>
-        <span className="text-zinc-600">
+        <span className="text-muted-foreground">
           Form (TSB) {latest.tsb > 0 ? "+" : ""}
           {latest.tsb.toFixed(1)} · Fitness {latest.ctl.toFixed(0)} · Fatigue {latest.atl.toFixed(0)}.{" "}
           {formZone.description}
@@ -126,10 +126,10 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
       <div className="min-h-[180px]">
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={visible} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
+          <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 6%)" />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10, fill: "#a1a1aa" }}
+            tick={{ fontSize: 10, fill: "oklch(0.6 0.01 270)" }}
             tickFormatter={(v: string) => v.slice(5)}
             interval={Math.floor(visible.length / 6)}
             axisLine={false}
@@ -139,7 +139,7 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
           <YAxis
             yAxisId="load"
             domain={[leftMin, leftMax]}
-            tick={{ fontSize: 10, fill: "#a1a1aa" }}
+            tick={{ fontSize: 10, fill: "oklch(0.6 0.01 270)" }}
             axisLine={false}
             tickLine={false}
             width={28}
@@ -149,26 +149,26 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
             yAxisId="form"
             orientation="right"
             domain={[rightMin, rightMax]}
-            tick={{ fontSize: 10, fill: "#a1a1aa" }}
+            tick={{ fontSize: 10, fill: "oklch(0.6 0.01 270)" }}
             axisLine={false}
             tickLine={false}
             width={28}
           />
 
           {/* TSB zone backgrounds on right axis */}
-          <ReferenceArea yAxisId="form" y1={10} y2={rightMax} fill="#d1fae5" fillOpacity={0.25} />
-          <ReferenceArea yAxisId="form" y1={-10} y2={10} fill="#e0f2fe" fillOpacity={0.25} />
-          <ReferenceArea yAxisId="form" y1={-30} y2={-10} fill="#fef3c7" fillOpacity={0.3} />
-          <ReferenceArea yAxisId="form" y1={rightMin} y2={-30} fill="#fee2e2" fillOpacity={0.3} />
+          <ReferenceArea yAxisId="form" y1={10} y2={rightMax} fill="oklch(0.75 0.15 180)" fillOpacity={0.1} />
+          <ReferenceArea yAxisId="form" y1={-10} y2={10} fill="oklch(0.70 0.15 265)" fillOpacity={0.08} />
+          <ReferenceArea yAxisId="form" y1={-30} y2={-10} fill="oklch(0.78 0.15 85)" fillOpacity={0.1} />
+          <ReferenceArea yAxisId="form" y1={rightMin} y2={-30} fill="oklch(0.72 0.18 335)" fillOpacity={0.1} />
 
           {/* Zero line for TSB */}
-          <ReferenceLine yAxisId="form" y={0} stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 2" />
+          <ReferenceLine yAxisId="form" y={0} stroke="oklch(0.6 0.01 270)" strokeWidth={1} strokeDasharray="4 2" />
 
           {/* Daily load bars (background) */}
           <Bar
             yAxisId="form"
             dataKey="daily_tss"
-            fill="#e4e4e7"
+            fill="oklch(1 0 0 / 10%)"
             radius={[2, 2, 0, 0]}
             maxBarSize={8}
             name="Daily load"
@@ -179,7 +179,7 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
             yAxisId="load"
             type="monotone"
             dataKey="ctl"
-            stroke="#6366f1"
+            stroke="oklch(0.70 0.15 265)"
             strokeWidth={2.5}
             dot={false}
             activeDot={{ r: 4 }}
@@ -190,7 +190,7 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
             yAxisId="load"
             type="monotone"
             dataKey="atl"
-            stroke="#f59e0b"
+            stroke="oklch(0.78 0.15 85)"
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4 }}
@@ -201,7 +201,7 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
             yAxisId="form"
             type="monotone"
             dataKey="tsb"
-            stroke="#10b981"
+            stroke="oklch(0.75 0.15 180)"
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4 }}
@@ -210,7 +210,14 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
           />
 
           <Tooltip
-            contentStyle={{ fontSize: 11, borderRadius: 8, padding: "6px 10px" }}
+            contentStyle={{
+              fontSize: 11,
+              borderRadius: 8,
+              padding: "6px 10px",
+              backgroundColor: "oklch(0.20 0.012 270)",
+              border: "1px solid oklch(1 0 0 / 8%)",
+              color: "oklch(0.95 0.005 270)",
+            }}
             wrapperStyle={{ zIndex: 50 }}
             labelFormatter={(l) => String(l)}
             formatter={(value, name) => {
@@ -225,7 +232,7 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
   );
 
   if (embedded) {
-    return <div className="rounded-2xl border border-zinc-100 bg-white p-4">{content}</div>;
+    return <div className="rounded-2xl border border-border bg-card p-4">{content}</div>;
   }
-  return <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">{content}</div>;
+  return <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">{content}</div>;
 }

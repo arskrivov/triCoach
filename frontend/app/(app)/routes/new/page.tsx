@@ -33,7 +33,7 @@ interface RouteOption {
   estimated_duration_seconds: number;
 }
 
-const ROUTE_COLORS = ["#3b82f6", "#f97316", "#22c55e"];
+const ROUTE_COLORS = ["#3b82f6", "#00d4ff", "#22c55e"];
 
 export default function NewRoutePage() {
   const router = useRouter();
@@ -61,7 +61,7 @@ export default function NewRoutePage() {
     mapboxgl.accessToken = TOKEN;
     const map = new mapboxgl.Map({
       container: mapContainer.current,
-      style: "mapbox://styles/mapbox/outdoors-v12",
+      style: "mapbox://styles/mapbox/dark-v11",
       center: [30.5, 50.45], // Kyiv default
       zoom: 11,
       attributionControl: false,
@@ -245,21 +245,21 @@ export default function NewRoutePage() {
   return (
     <div className="flex min-h-screen overflow-hidden">
       {/* Sidebar */}
-      <div className="w-80 shrink-0 bg-white border-r flex flex-col overflow-y-auto">
-        <div className="p-4 border-b">
-          <h1 className="text-lg font-semibold">Plan a Route</h1>
-          <p className="text-xs text-zinc-400 mt-0.5">Click the map to set your start point</p>
+      <div className="w-80 shrink-0 bg-card border-r border-border flex flex-col overflow-y-auto">
+        <div className="p-4 border-b border-border">
+          <h1 className="text-lg font-semibold text-foreground">Plan a Route</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Click the map to set your start point</p>
         </div>
 
         <div className="p-4 flex flex-col gap-4 flex-1">
           {/* Sport */}
           <div>
-            <label className="text-xs font-medium text-zinc-500 mb-1.5 block">Sport</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Sport</label>
             <div className="flex gap-2 flex-wrap">
               {SPORTS.map((s) => (
                 <button key={s.value} onClick={() => setSport(s.value)}
                   className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                    sport === s.value ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                    sport === s.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
                   }`}>
                   {s.label}
                 </button>
@@ -269,25 +269,25 @@ export default function NewRoutePage() {
 
           {/* Distance */}
           <div>
-            <label className="text-xs font-medium text-zinc-500 mb-1.5 block">
-              Target distance: <span className="text-zinc-900 font-semibold">{distanceKm} km</span>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              Target distance: <span className="text-foreground font-semibold">{distanceKm} km</span>
             </label>
             <input type="range" min={2} max={100} value={distanceKm}
               onChange={(e) => setDistanceKm(+e.target.value)}
-              className="w-full accent-zinc-900" />
-            <div className="flex justify-between text-xs text-zinc-400 mt-1">
+              className="w-full accent-primary" />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
               <span>2 km</span><span>100 km</span>
             </div>
           </div>
 
           {/* Start coords */}
           {startLat !== null && startLng !== null && (
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-muted-foreground">
               Start: {startLat.toFixed(4)}, {startLng.toFixed(4)}
             </p>
           )}
 
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {error && <p className="text-xs text-[--status-negative]">{error}</p>}
 
           <Button onClick={generate} disabled={generating}>
             {generating ? "Generating…" : "Generate Routes"}
@@ -296,18 +296,18 @@ export default function NewRoutePage() {
           {/* Route options */}
           {routes.length > 0 && (
             <div className="flex flex-col gap-2">
-              <p className="text-xs font-medium text-zinc-500">Choose a route</p>
+              <p className="text-xs font-medium text-muted-foreground">Choose a route</p>
               {routes.map((r, i) => (
                 <button key={i} onClick={() => selectRoute(i)}
                   className={`text-left p-3 rounded-lg border transition-all ${
-                    selected === i ? "border-zinc-900 bg-zinc-50" : "border-zinc-100 hover:border-zinc-300"
+                    selected === i ? "border-primary bg-muted" : "border-border hover:border-primary/30"
                   }`}>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="w-3 h-3 rounded-full shrink-0"
                       style={{ background: ROUTE_COLORS[i % ROUTE_COLORS.length] }} />
                   <span className="text-sm font-medium">Option {i + 1}</span>
                 </div>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-muted-foreground">
                     {r.distance_km.toFixed(1)} km
                     {r.elevation_gain_m ? ` · +${r.elevation_gain_m.toFixed(0)} m` : ""}
                     {r.estimated_duration_seconds ? ` · ~${formatDuration(r.estimated_duration_seconds)}` : ""}
@@ -319,8 +319,8 @@ export default function NewRoutePage() {
 
           {/* Save form */}
           {selected !== null && (
-            <div className="flex flex-col gap-2 border-t pt-4">
-              <label className="text-xs font-medium text-zinc-500">Route name</label>
+            <div className="flex flex-col gap-2 border-t border-border pt-4">
+              <label className="text-xs font-medium text-muted-foreground">Route name</label>
               <Input
                 value={routeName}
                 onChange={(e) => setRouteName(e.target.value)}
@@ -335,19 +335,19 @@ export default function NewRoutePage() {
       </div>
 
       {/* Map */}
-      <div className="flex-1 relative min-h-screen bg-zinc-200">
+      <div className="flex-1 relative min-h-screen bg-background">
         {!TOKEN && (
-          <div className="absolute inset-0 bg-zinc-100 flex items-center justify-center text-sm text-zinc-400 z-10">
+          <div className="absolute inset-0 bg-muted flex items-center justify-center text-sm text-muted-foreground z-10">
             Set NEXT_PUBLIC_MAPBOX_TOKEN to enable the map
           </div>
         )}
         {!!TOKEN && !mapReady && !mapError && (
-          <div className="absolute inset-0 bg-zinc-100 flex items-center justify-center text-sm text-zinc-500 z-10">
+          <div className="absolute inset-0 bg-muted flex items-center justify-center text-sm text-muted-foreground z-10">
             Loading map…
           </div>
         )}
         {!!mapError && (
-          <div className="absolute inset-0 bg-zinc-100 flex items-center justify-center text-sm text-red-500 z-10 px-6 text-center">
+          <div className="absolute inset-0 bg-muted flex items-center justify-center text-sm text-[--status-negative] z-10 px-6 text-center">
             {mapError}
           </div>
         )}

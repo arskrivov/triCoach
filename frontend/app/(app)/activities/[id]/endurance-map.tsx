@@ -26,7 +26,7 @@ export function EnduranceMap({ polyline }: Props) {
     mapboxgl.accessToken = TOKEN;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/outdoors-v12",
+      style: "mapbox://styles/mapbox/dark-v11",
       center: coords[0],
       zoom: 12,
       attributionControl: false,
@@ -47,7 +47,7 @@ export function EnduranceMap({ polyline }: Props) {
         type: "line",
         source: "route",
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#f97316", "line-width": 3 },
+        paint: { "line-color": "#00d4ff", "line-width": 3 },
       });
 
       // Fit bounds
@@ -73,7 +73,7 @@ export function EnduranceMap({ polyline }: Props) {
 
   if (!TOKEN) {
     return (
-      <div className="aspect-video w-full min-h-[200px] bg-zinc-100 rounded-xl flex items-center justify-center text-sm text-zinc-400">
+      <div className="aspect-video w-full min-h-[200px] bg-muted rounded-xl flex items-center justify-center text-sm text-muted-foreground">
         Set NEXT_PUBLIC_MAPBOX_TOKEN to display map
       </div>
     );
@@ -82,7 +82,7 @@ export function EnduranceMap({ polyline }: Props) {
   return (
     <div
       ref={containerRef}
-      className="aspect-video w-full min-h-[200px] rounded-xl overflow-hidden border border-zinc-200"
+      className="aspect-video w-full min-h-[200px] rounded-xl overflow-hidden border border-border"
     />
   );
 }

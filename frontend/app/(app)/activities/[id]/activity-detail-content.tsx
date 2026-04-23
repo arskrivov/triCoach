@@ -35,11 +35,11 @@ export function ActivityDetailContent({ id }: Props) {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return <div className="text-zinc-400 text-sm">Loading…</div>;
+  if (loading) return <div className="text-muted-foreground text-sm">Loading…</div>;
   if (notFound)
     return (
       <div className="text-center py-16">
-        <p className="text-zinc-500">Activity not found.</p>
+        <p className="text-muted-foreground">Activity not found.</p>
         <Link href="/activities" className="text-sm underline mt-2 inline-block">
           Back to activities
         </Link>
@@ -54,7 +54,7 @@ export function ActivityDetailContent({ id }: Props) {
   return (
     <div className="flex flex-col gap-5">
       {/* Back link */}
-      <Link href="/activities" className="text-sm text-zinc-400 hover:text-zinc-600">
+      <Link href="/activities" className="text-sm text-muted-foreground hover:text-foreground">
         ← Activities
       </Link>
 
@@ -66,8 +66,8 @@ export function ActivityDetailContent({ id }: Props) {
           {icon}
         </span>
         <div>
-          <h1 className="text-xl font-semibold">{activity.name || label}</h1>
-          <p className="text-sm text-zinc-500">
+          <h1 className="text-xl font-semibold text-foreground">{activity.name || label}</h1>
+          <p className="text-sm text-muted-foreground">
             {formatDate(activity.start_time)} · {label}
           </p>
         </div>
@@ -144,12 +144,12 @@ export function ActivityDetailContent({ id }: Props) {
 
       {/* AI Analysis */}
       {activity.ai_analysis && (
-        <Card className="border-blue-100 bg-blue-50">
+        <Card className="border-primary/20 bg-primary/10">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-blue-700">Coach analysis</CardTitle>
+            <CardTitle className="text-sm text-primary">Coach analysis</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-blue-800 leading-relaxed">{activity.ai_analysis}</p>
+            <p className="text-sm text-foreground leading-relaxed">{activity.ai_analysis}</p>
           </CardContent>
         </Card>
       )}
@@ -161,7 +161,7 @@ export function ActivityDetailContent({ id }: Props) {
             <CardTitle className="text-sm">Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-zinc-600">{activity.notes}</p>
+            <p className="text-sm text-muted-foreground">{activity.notes}</p>
           </CardContent>
         </Card>
       )}
@@ -171,8 +171,8 @@ export function ActivityDetailContent({ id }: Props) {
 
 function StatBox({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="bg-zinc-50 rounded-lg p-3">
-      <p className="text-xs text-zinc-400 mb-0.5">{label}</p>
+    <div className="bg-muted rounded-lg p-3">
+      <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
       <p className="font-semibold tabular-nums">{value}</p>
     </div>
   );

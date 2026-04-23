@@ -59,19 +59,19 @@ export function SavedRoutes() {
         {SPORT_FILTERS.map((f) => (
           <button key={f.value} onClick={() => setSport(f.value)}
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              sport === f.value ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+              sport === f.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}>
             {f.label}
           </button>
         ))}
       </div>
 
-      {loading ? <p className="text-zinc-400 text-sm">Loading…</p>
+      {loading ? <p className="text-muted-foreground text-sm">Loading…</p>
         : error ? (
-          <div className="text-center py-16 text-sm text-red-500">{error}</div>
+          <div className="text-center py-16 text-sm text-[--status-negative]">{error}</div>
         )
         : routes.length === 0 ? (
-          <div className="text-center py-16 text-zinc-400">
+          <div className="text-center py-16 text-muted-foreground">
             <p className="mb-3">No saved routes yet.</p>
             <Link href="/routes/new"><Button variant="outline" size="sm">Plan your first route</Button></Link>
           </div>
@@ -82,11 +82,11 @@ export function SavedRoutes() {
               const dist = r.distance_meters ? `${(r.distance_meters / 1000).toFixed(1)} km` : "—";
               const elev = r.elevation_gain_meters ? `+${r.elevation_gain_meters.toFixed(0)} m` : "";
               return (
-                <div key={r.id} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 rounded-xl hover:border-zinc-300 transition-all">
+                <div key={r.id} className="flex items-center gap-4 p-4 bg-card border border-border rounded-xl hover:border-primary/30 transition-all">
                   <span className={`w-10 h-10 flex items-center justify-center rounded-full text-lg shrink-0 ${color}`}>{icon}</span>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{r.name}</p>
-                    <p className="text-xs text-zinc-400">
+                    <p className="text-xs text-muted-foreground">
                       {dist}{elev ? ` · ${elev}` : ""}
                       {r.estimated_duration_seconds ? ` · ~${formatDuration(r.estimated_duration_seconds)}` : ""}
                       {r.is_loop ? " · Loop" : ""}

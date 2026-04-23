@@ -38,10 +38,10 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-[400px] shadow-sm">
+    <Card className="w-full max-w-[400px] shadow-sm backdrop-blur-xl bg-card/80 border-border">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">Personal Coach</CardTitle>
-        <p className="text-sm text-zinc-500">Sign in to your account</p>
+        <CardTitle className="text-2xl"><span className="text-foreground">Personal </span><span className="text-primary">Coach</span></CardTitle>
+        <p className="text-sm text-muted-foreground">Sign in to your account</p>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -70,13 +70,13 @@ export function LoginForm() {
               className="min-h-[44px]"
             />
           </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-[--status-negative]">{error}</p>}
           <Button type="submit" disabled={loading} className="w-full">
             {loading ? "Signing in…" : "Sign in"}
           </Button>
-          <p className="text-center text-sm text-zinc-500">
+          <p className="text-center text-sm text-muted-foreground">
             No account?{" "}
-            <Link href="/register" className="text-zinc-900 underline underline-offset-2">
+            <Link href="/register" className="text-primary underline underline-offset-2">
               Create one
             </Link>
           </p>

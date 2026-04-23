@@ -34,8 +34,8 @@ import {
 import type { HealthSparklinePoint, RecoveryOverview } from "@/lib/types";
 import { DashboardMetricTile } from "@/components/ui/metric-tile";
 
-const SECTION_LABEL_CLASS = "text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400";
-const ANALYSIS_TEXT_CLASS = "text-sm leading-7 text-zinc-600";
+const SECTION_LABEL_CLASS = "text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground";
+const ANALYSIS_TEXT_CLASS = "text-sm leading-7 text-muted-foreground";
 
 const fmt = (value: number | null, unit: string) => formatNumber(value, unit || undefined);
 
@@ -50,20 +50,20 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
   const visible = data.slice(-30);
 
   return (
-    <div className="rounded-2xl border border-zinc-100 bg-white p-4">
+    <div className="rounded-2xl border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
         <p className={SECTION_LABEL_CLASS}>30-day trends</p>
-        <div className="flex flex-wrap gap-4 text-xs text-zinc-400">
+        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-3 rounded bg-indigo-500" />
+            <span className="inline-block h-0.5 w-3 rounded" style={{ backgroundColor: "oklch(0.70 0.15 265)" }} />
             Sleep score
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-3 rounded bg-emerald-500" />
+            <span className="inline-block h-0.5 w-3 rounded" style={{ backgroundColor: "oklch(0.75 0.15 180)" }} />
             HRV
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-3 rounded bg-rose-400" />
+            <span className="inline-block h-0.5 w-3 rounded" style={{ backgroundColor: "oklch(0.72 0.18 335)" }} />
             Resting HR
           </span>
         </div>
@@ -71,10 +71,10 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
       <div className="min-h-[160px]">
       <ResponsiveContainer width="100%" height={180}>
         <ComposedChart data={visible} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
+          <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 6%)" />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10, fill: "#a1a1aa" }}
+            tick={{ fontSize: 10, fill: "oklch(0.6 0.01 270)" }}
             tickFormatter={(v: string) => formatChartDate(v)}
             interval={Math.floor(visible.length / 5)}
             axisLine={false}
@@ -84,7 +84,7 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
           <YAxis
             yAxisId="score"
             domain={[30, 100]}
-            tick={{ fontSize: 10, fill: "#a1a1aa" }}
+            tick={{ fontSize: 10, fill: "oklch(0.6 0.01 270)" }}
             axisLine={false}
             tickLine={false}
             width={28}
@@ -94,17 +94,24 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
             yAxisId="bio"
             orientation="right"
             domain={[20, 80]}
-            tick={{ fontSize: 10, fill: "#a1a1aa" }}
+            tick={{ fontSize: 10, fill: "oklch(0.6 0.01 270)" }}
             axisLine={false}
             tickLine={false}
             width={28}
           />
           {/* Good zone bands */}
-          <ReferenceLine yAxisId="score" y={85} stroke="#6366f1" strokeDasharray="4 2" strokeWidth={0.75} opacity={0.4} />
-          <ReferenceLine yAxisId="score" y={70} stroke="#6366f1" strokeDasharray="4 2" strokeWidth={0.75} opacity={0.4} />
+          <ReferenceLine yAxisId="score" y={85} stroke="oklch(0.70 0.15 265)" strokeDasharray="4 2" strokeWidth={0.75} opacity={0.4} />
+          <ReferenceLine yAxisId="score" y={70} stroke="oklch(0.70 0.15 265)" strokeDasharray="4 2" strokeWidth={0.75} opacity={0.4} />
           <Tooltip
             wrapperStyle={{ zIndex: 50 }}
-            contentStyle={{ fontSize: 11, borderRadius: 8, padding: "6px 10px" }}
+            contentStyle={{
+              fontSize: 11,
+              borderRadius: 8,
+              padding: "6px 10px",
+              backgroundColor: "oklch(0.20 0.012 270)",
+              border: "1px solid oklch(1 0 0 / 8%)",
+              color: "oklch(0.95 0.005 270)",
+            }}
             labelFormatter={(l) => formatChartDate(String(l))}
             formatter={(value, name) => {
               const v = typeof value === "number" ? value.toFixed(0) : "—";
@@ -118,7 +125,7 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
             yAxisId="score"
             type="monotone"
             dataKey="sleep_score"
-            stroke="#6366f1"
+            stroke="oklch(0.70 0.15 265)"
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4 }}
@@ -128,7 +135,7 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
             yAxisId="bio"
             type="monotone"
             dataKey="hrv"
-            stroke="#10b981"
+            stroke="oklch(0.75 0.15 180)"
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4 }}
@@ -138,7 +145,7 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
             yAxisId="bio"
             type="monotone"
             dataKey="resting_hr"
-            stroke="#f43f5e"
+            stroke="oklch(0.72 0.18 335)"
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4 }}
@@ -208,13 +215,13 @@ export function RecoveryOverviewCard({
 
   // Sparkline colour + axis mapping per metric key
   const sparklineConfig: Record<string, { stroke: string; dataKey: keyof HealthSparklinePoint; higherIsBetter: boolean }> = {
-    hrv_last_night:                    { stroke: "#10b981", dataKey: "hrv",          higherIsBetter: true  },
-    resting_hr:                        { stroke: "#f43f5e", dataKey: "resting_hr",   higherIsBetter: false },
-    sleep_score:                       { stroke: "#6366f1", dataKey: "sleep_score",  higherIsBetter: true  },
-    stress_avg:                        { stroke: "#f97316", dataKey: "stress",       higherIsBetter: false },
-    pulse_ox_avg:                      { stroke: "#0ea5e9", dataKey: "spo2",         higherIsBetter: true  },
-    respiration_sleep:                 { stroke: "#8b5cf6", dataKey: "respiration",  higherIsBetter: false },
-    morning_training_readiness_score:  { stroke: "#06b6d4", dataKey: "readiness",    higherIsBetter: true  },
+    hrv_last_night:                    { stroke: "oklch(0.75 0.15 180)", dataKey: "hrv",          higherIsBetter: true  },
+    resting_hr:                        { stroke: "oklch(0.72 0.18 335)", dataKey: "resting_hr",   higherIsBetter: false },
+    sleep_score:                       { stroke: "oklch(0.70 0.15 265)", dataKey: "sleep_score",  higherIsBetter: true  },
+    stress_avg:                        { stroke: "oklch(0.78 0.15 85)",  dataKey: "stress",       higherIsBetter: false },
+    pulse_ox_avg:                      { stroke: "oklch(0.70 0.15 265)", dataKey: "spo2",         higherIsBetter: true  },
+    respiration_sleep:                 { stroke: "oklch(0.65 0.12 300)", dataKey: "respiration",  higherIsBetter: false },
+    morning_training_readiness_score:  { stroke: "oklch(0.75 0.15 180)", dataKey: "readiness",    higherIsBetter: true  },
   };
 
   return (
@@ -240,6 +247,7 @@ export function RecoveryOverviewCard({
             value={sleepFmt.text}
             valueClassName={sleepFmt.color}
             subtitle="Last night"
+            className="shadow-[0_0_12px_oklch(0.55_0.2_270_/_0.15)]"
           />
           <DashboardMetricTile
             label="Sleep Duration"
@@ -280,16 +288,16 @@ export function RecoveryOverviewCard({
             return (
               <div
                 key={metric.key}
-                className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-zinc-100 px-3 py-2 text-sm lg:grid lg:grid-cols-[1.6fr_0.7fr_0.7fr_64px_0.8fr] lg:gap-2"
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border px-3 py-2 text-sm lg:grid lg:grid-cols-[1.6fr_0.7fr_0.7fr_64px_0.8fr] lg:gap-2"
               >
-                <p className="w-full font-medium text-zinc-700 lg:w-auto">{metric.label}</p>
+                <p className="w-full font-medium text-foreground lg:w-auto">{metric.label}</p>
                 <div>
                   <p className={SECTION_LABEL_CLASS}>Now</p>
-                  <p className="font-semibold text-zinc-900">{fmt(metric.current, metric.unit)}</p>
+                  <p className="font-semibold tabular-nums text-foreground">{fmt(metric.current, metric.unit)}</p>
                 </div>
                 <div>
                   <p className={SECTION_LABEL_CLASS}>7d avg</p>
-                  <p className="font-semibold text-zinc-900">{fmt(metric.avg_7d, "")}</p>
+                  <p className="font-semibold tabular-nums text-foreground">{fmt(metric.avg_7d, "")}</p>
                 </div>
                 {/* Mini sparkline — hidden on mobile to reduce clutter */}
                 <div className="hidden lg:block">

@@ -79,8 +79,8 @@ export function ActivityFeed() {
             }}
             className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               filter === f.value
-                ? "bg-zinc-900 text-white"
-                : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
           >
             {f.label}
@@ -90,7 +90,7 @@ export function ActivityFeed() {
 
       {/* Activity list */}
       {activities.length === 0 && !loading ? (
-        <p className="text-sm text-zinc-400 py-8 text-center">
+        <p className="text-sm text-muted-foreground py-8 text-center">
           No activities found. Sync your Garmin to import data.
         </p>
       ) : (
@@ -117,7 +117,7 @@ function ActivityCard({ activity: a }: { activity: ActivitySummary }) {
   return (
     <Link
       href={`/activities/${a.id}`}
-      className="flex items-center gap-4 p-4 bg-white border border-zinc-100 rounded-xl hover:border-zinc-300 hover:shadow-sm transition-all"
+      className="flex items-center gap-4 p-4 bg-card border border-border rounded-xl hover:border-primary/30 hover:shadow-sm transition-all"
     >
       <span
         className={`w-10 h-10 flex items-center justify-center rounded-full text-lg shrink-0 ${color}`}
@@ -126,16 +126,16 @@ function ActivityCard({ activity: a }: { activity: ActivitySummary }) {
       </span>
       <div className="flex-1 min-w-0">
         <p className="font-medium truncate">{a.name || label}</p>
-        <p className="text-xs text-zinc-400 mt-0.5">
+        <p className="text-xs text-muted-foreground mt-0.5">
           {formatRelativeDate(a.start_time)}
           {a.duration_seconds ? ` · ${formatDuration(a.duration_seconds)}` : ""}
           {a.avg_hr ? ` · ${a.avg_hr} bpm` : ""}
         </p>
       </div>
       <div className="text-right shrink-0">
-        <p className="font-semibold text-sm">{primaryStat(a)}</p>
+        <p className="font-semibold tabular-nums text-sm">{primaryStat(a)}</p>
         {a.tss && (
-          <p className="text-xs text-zinc-400">TSS {a.tss.toFixed(0)}</p>
+          <p className="text-xs tabular-nums text-muted-foreground">TSS {a.tss.toFixed(0)}</p>
         )}
       </div>
     </Link>

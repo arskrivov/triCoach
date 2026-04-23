@@ -230,7 +230,7 @@ export function GarminConnectCard() {
       </CardHeader>
       <CardContent>
         {success && (
-          <Alert className="mb-4 border-green-200 bg-green-50 text-green-800">
+          <Alert className="mb-4 border-[--status-positive]/30 bg-[--status-positive]/10 text-[--status-positive]">
             <AlertDescription>{success}</AlertDescription>
           </Alert>
         )}
@@ -245,11 +245,11 @@ export function GarminConnectCard() {
             <div>
               <p className="text-sm font-medium">{status.garmin_email}</p>
               {status.last_sync_at ? (
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-muted-foreground">
                   Last synced: {new Date(status.last_sync_at).toLocaleString()}
                 </p>
               ) : (
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-muted-foreground">
                   Connected, but no data has been synced yet.
                 </p>
               )}
@@ -296,7 +296,7 @@ export function GarminConnectCard() {
 
             {mode === "credentials" ? (
               <form onSubmit={handleConnect} className="flex flex-col gap-3">
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-muted-foreground">
                   Enter your Garmin Connect credentials. They are stored encrypted
                   and only used to sync your data.
                 </p>
@@ -330,7 +330,7 @@ export function GarminConnectCard() {
               </form>
             ) : (
               <form onSubmit={handleTokenImport} className="flex flex-col gap-3">
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-muted-foreground">
                   If Garmin is rate-limiting credential login, generate a fresh
                   <span className="mx-1 font-mono">garmin_tokens.json</span>
                   with the upstream
