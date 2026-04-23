@@ -26,7 +26,6 @@ class ActivityRow(BaseModel):
     start_time: str = ""
     duration_seconds: int | None = None
     calories: int | None = None
-    notes: str | None = None
     ai_analysis: str | None = None
     ai_analyzed_at: str | None = None
     # Endurance
