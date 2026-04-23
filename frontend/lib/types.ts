@@ -23,7 +23,6 @@ export interface ActivitySummary {
   avg_power_watts: number | null;
   tss: number | null;
   total_sets: number | null;
-  total_volume_kg: number | null;
   session_type: string | null;
 }
 

@@ -722,7 +722,6 @@ async def build_dashboard_overview(
                 "avg_power_watts": activity.avg_power_watts,
                 "tss": activity.tss,
                 "total_sets": activity.total_sets,
-                "total_volume_kg": activity.total_volume_kg,
                 "session_type": activity.session_type,
             }
             for activity in activities[:6]
