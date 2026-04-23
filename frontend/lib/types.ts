@@ -170,7 +170,6 @@ export interface HealthSparklinePoint {
   stress: number | null;
   spo2: number | null;
   respiration: number | null;
-  body_battery: number | null;
   readiness: number | null;
 }
 

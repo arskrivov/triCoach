@@ -1,7 +1,7 @@
 /**
  * RecoveryOverviewCard — displays recovery metrics, trends, and sparklines.
  *
- * Shows 4 key metric tiles, a combined 30-day chart (Sleep Score / HRV /
+ * Shows 6 key metric tiles, a combined 30-day chart (Sleep Score / HRV /
  * Resting HR), and a metric trend table with inline sparklines.
  * Optionally displays an AI-generated sleep analysis from the briefing.
  *
@@ -196,10 +196,7 @@ export function RecoveryOverviewCard({
 }) {
   const sleepFmt = formatSleepScore(recovery.last_night.sleep_score);
   const analysisText = analysis ?? recovery.headline;
-
-  // 4 key tiles — sleep time merged into sleep score subtitle
   const sleepHours = recovery.last_night.sleep_duration_hours;
-  const sleepSubtitle = sleepHours != null ? `${sleepHours.toFixed(1)} h` : undefined;
 
   // Metrics to show in trend table (skip sleep_score and sleep_duration — shown in tiles)
   const trendMetrics = recovery.metrics.filter(
@@ -214,7 +211,6 @@ export function RecoveryOverviewCard({
     stress_avg:                        { stroke: "#f97316", dataKey: "stress",       higherIsBetter: false },
     pulse_ox_avg:                      { stroke: "#0ea5e9", dataKey: "spo2",         higherIsBetter: true  },
     respiration_sleep:                 { stroke: "#8b5cf6", dataKey: "respiration",  higherIsBetter: false },
-    body_battery_high:                 { stroke: "#eab308", dataKey: "body_battery", higherIsBetter: true  },
     morning_training_readiness_score:  { stroke: "#06b6d4", dataKey: "readiness",    higherIsBetter: true  },
   };
 
@@ -234,13 +230,18 @@ export function RecoveryOverviewCard({
       </CardHeader>
 
       <CardContent className="grid gap-5">
-        {/* 4 key metric tiles */}
-        <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-4">
+        {/* 6 key metric tiles — one per metric, no merging */}
+        <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           <DashboardMetricTile
-            label="Sleep"
+            label="Sleep Score"
             value={sleepFmt.text}
             valueClassName={sleepFmt.color}
-            subtitle={sleepSubtitle}
+            subtitle="Last night"
+          />
+          <DashboardMetricTile
+            label="Sleep Duration"
+            value={sleepHours != null ? `${sleepHours.toFixed(1)} h` : "—"}
+            subtitle="Last night"
           />
           <DashboardMetricTile
             label="HRV"
@@ -253,13 +254,14 @@ export function RecoveryOverviewCard({
             subtitle="Last night"
           />
           <DashboardMetricTile
+            label="SpO2"
+            value={fmt(recovery.last_night.pulse_ox_avg, "%")}
+            subtitle="Last night"
+          />
+          <DashboardMetricTile
             label="Readiness"
             value={fmt(recovery.last_night.morning_training_readiness_score, "")}
-            subtitle={
-              recovery.last_night.pulse_ox_avg != null
-                ? `SpO2 ${fmt(recovery.last_night.pulse_ox_avg, "%")}`
-                : "Morning score"
-            }
+            subtitle="Morning score"
           />
         </div>
 

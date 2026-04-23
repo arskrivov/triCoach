@@ -52,7 +52,6 @@ RECOVERY_METRICS = (
     _MetricDefinition("respiration_sleep", "Sleep respiration", "", False),
     _MetricDefinition("stress_avg", "Stress", "", False),
     _MetricDefinition("pulse_ox_avg", "SpO2", "", True),
-    _MetricDefinition("body_battery_high", "Body Battery high", "", True),
     _MetricDefinition("morning_training_readiness_score", "Morning readiness", "", True),
 )
 
@@ -166,7 +165,6 @@ def _format_health_for_prompt(health: DailyHealthRow | None) -> dict[str, Any]:
         "hrv_ms": _to_float(health.hrv_last_night) if health else None,
         "resting_hr": _to_float(health.resting_hr) if health else None,
         "readiness": _to_float(health.morning_readiness_score) if health else None,
-        "body_battery_high": _to_float(health.body_battery_high) if health else None,
         "stress": _to_float(health.stress_avg) if health else None,
         "spo2": _to_float(health.spo2_avg) if health else None,
         "respiration": _to_float(health.respiration_avg) if health else None,
@@ -549,7 +547,6 @@ def _aggregate_recovery_data(
             "stress": row.stress_avg if row else None,
             "spo2": row.spo2_avg if row else None,
             "respiration": row.respiration_avg if row else None,
-            "body_battery": row.body_battery_high if row else None,
             "readiness": row.morning_readiness_score if row else None,
         })
 
