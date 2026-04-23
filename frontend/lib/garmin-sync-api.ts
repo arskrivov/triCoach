@@ -1,6 +1,9 @@
 import { getAuthHeaders } from "@/lib/api";
 
-const DIRECT_API_ROOT = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const DIRECT_API_ROOT =
+  typeof window === "undefined"
+    ? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+    : "/api/backend";
 
 export type GarminSyncResponse = {
   activities_synced: number;
