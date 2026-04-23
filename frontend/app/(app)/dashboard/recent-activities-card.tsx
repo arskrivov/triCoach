@@ -8,7 +8,7 @@
  */
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDisciplineMeta, formatDuration, formatRelativeDate, primaryStat } from "@/lib/format";
+import { getDisciplineMeta, formatDuration, formatDistance, formatRelativeDate } from "@/lib/format";
 import type { ActivitySummary } from "@/lib/types";
 
 interface Props {
@@ -53,12 +53,12 @@ export function RecentActivitiesCard({ activities }: Props) {
                         {a.name || label}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {formatRelativeDate(a.start_time)} · {formatDuration(a.duration_seconds)}
+                        {formatRelativeDate(a.start_time)}
+                        {a.distance_meters ? ` · ${formatDistance(a.distance_meters)}` : ""}
+                        {a.duration_seconds ? ` · ${formatDuration(a.duration_seconds)}` : ""}
+                        {a.calories ? ` · ${a.calories.toLocaleString()} kcal` : ""}
                       </p>
                     </div>
-                    <span className="text-sm text-muted-foreground font-medium tabular-nums whitespace-nowrap">
-                      {primaryStat(a)}
-                    </span>
                   </Link>
                 </li>
               );

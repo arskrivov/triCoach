@@ -160,6 +160,18 @@ export function ActivityOverviewCard({
         {/* Key training metric tiles */}
         <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           <DashboardMetricTile
+            label="Sessions 7d"
+            value={`${last_7d.sessions}`}
+            subtitle="This week"
+            className="border-primary/20 bg-primary/5"
+          />
+          <DashboardMetricTile
+            label="Duration 7d"
+            value={`${last_7d.duration_hours.toFixed(1)}h`}
+            subtitle="This week"
+            className="border-primary/20 bg-primary/5"
+          />
+          <DashboardMetricTile
             label="Load 7d (TSS)"
             value={`${Math.round(last_7d.tss)}`}
             subtitle="Training stress"
@@ -180,16 +192,6 @@ export function ActivityOverviewCard({
             subtitle="Fitness − Fatigue"
             valueClassName={tsbTone}
             className="shadow-[0_0_12px_oklch(0.55_0.2_270_/_0.15)]"
-          />
-          <DashboardMetricTile
-            label="Sessions 7d"
-            value={`${last_7d.sessions}`}
-            subtitle="This week"
-          />
-          <DashboardMetricTile
-            label="Duration 7d"
-            value={`${last_7d.duration_hours.toFixed(1)}h`}
-            subtitle="This week"
           />
         </div>
 
