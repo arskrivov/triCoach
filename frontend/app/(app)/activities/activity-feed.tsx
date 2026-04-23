@@ -69,7 +69,7 @@ export function ActivityFeed() {
   return (
     <div>
       {/* Filter pills */}
-      <div className="flex flex-wrap gap-2 mb-5">
+      <div className="flex gap-2 mb-5 overflow-x-auto pb-2 scrollbar-hide sm:flex-wrap sm:overflow-x-visible">
         {FILTERS.map((f) => (
           <button
             key={f.value}
@@ -77,7 +77,7 @@ export function ActivityFeed() {
               setOffset(0);
               setFilter(f.value);
             }}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               filter === f.value
                 ? "bg-zinc-900 text-white"
                 : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"

@@ -38,7 +38,7 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-sm shadow-sm">
+    <Card className="w-full max-w-[400px] shadow-sm">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Personal Coach</CardTitle>
         <p className="text-sm text-zinc-500">Sign in to your account</p>
@@ -55,6 +55,7 @@ export function LoginForm() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoFocus
+              className="min-h-[44px]"
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -66,6 +67,7 @@ export function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              className="min-h-[44px]"
             />
           </div>
           {error && <p className="text-sm text-red-500">{error}</p>}

@@ -73,7 +73,7 @@ export function EnduranceMap({ polyline }: Props) {
 
   if (!TOKEN) {
     return (
-      <div className="h-64 bg-zinc-100 rounded-xl flex items-center justify-center text-sm text-zinc-400">
+      <div className="aspect-video w-full min-h-[200px] bg-zinc-100 rounded-xl flex items-center justify-center text-sm text-zinc-400">
         Set NEXT_PUBLIC_MAPBOX_TOKEN to display map
       </div>
     );
@@ -82,7 +82,7 @@ export function EnduranceMap({ polyline }: Props) {
   return (
     <div
       ref={containerRef}
-      className="h-72 rounded-xl overflow-hidden border border-zinc-200"
+      className="aspect-video w-full min-h-[200px] rounded-xl overflow-hidden border border-zinc-200"
     />
   );
 }

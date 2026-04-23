@@ -36,13 +36,13 @@ export function MetricTile({
   return (
     <div
       className={cn(
-        "flex min-h-[120px] flex-col justify-between rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-4",
+        "flex min-h-[100px] sm:min-h-[120px] flex-col justify-between rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-4",
         className,
       )}
     >
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">{label}</p>
       <div className="grid gap-1">
-        <p className={cn("text-2xl font-bold text-zinc-900", valueClassName)}>{value}</p>
+        <p className={cn("text-xl sm:text-2xl font-bold text-zinc-900", valueClassName)}>{value}</p>
         {subtitle ? <p className="text-xs text-zinc-400">{subtitle}</p> : null}
       </div>
     </div>

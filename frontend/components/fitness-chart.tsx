@@ -123,6 +123,7 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
       </div>
 
       {/* Chart */}
+      <div className="min-h-[180px]">
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={visible} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
@@ -210,6 +211,7 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
 
           <Tooltip
             contentStyle={{ fontSize: 11, borderRadius: 8, padding: "6px 10px" }}
+            wrapperStyle={{ zIndex: 50 }}
             labelFormatter={(l) => String(l)}
             formatter={(value, name) => {
               const v = typeof value === "number" ? value.toFixed(1) : "—";
@@ -218,6 +220,7 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
           />
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
     </>
   );
 

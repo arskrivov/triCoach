@@ -62,12 +62,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-zinc-50">
       <div
-        className={`fixed inset-0 z-40 bg-zinc-950/20 transition-opacity ${navOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        className={`fixed inset-0 z-40 bg-zinc-950/20 transition-opacity lg:hidden ${navOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
         onClick={() => setNavOpen(false)}
       />
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-white transition-transform duration-200 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-white transition-transform duration-200 lg:translate-x-0 lg:z-auto ${
           navOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -92,7 +92,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 key={href}
                 href={href}
                 onClick={() => setNavOpen(false)}
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   active
                     ? "bg-indigo-600 text-white"
                     : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
@@ -117,13 +117,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="min-h-screen">
+      <div className="min-h-screen lg:ml-64">
         <header className="sticky top-0 z-30 border-b bg-white/90 backdrop-blur">
           <div className="mx-auto flex h-14 w-full max-w-[1680px] items-center gap-3 px-4 sm:px-6">
             <button
               type="button"
               onClick={() => setNavOpen(true)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 transition-colors hover:bg-zinc-50 hover:text-zinc-900 lg:hidden"
               aria-label="Open navigation"
             >
               <span className="flex flex-col gap-1">

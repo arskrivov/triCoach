@@ -74,7 +74,7 @@ export function AthleteProfileCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {FIELDS.map(({ key, label, unit, hint }) => (
             <div key={key}>
               <Label htmlFor={key} className="text-sm">
@@ -87,7 +87,7 @@ export function AthleteProfileCard() {
                 value={profile[key] ?? ""}
                 onChange={(e) => set(key, e.target.value)}
                 placeholder="—"
-                className="mt-1"
+                className="mt-1 min-h-[44px]"
               />
             </div>
           ))}

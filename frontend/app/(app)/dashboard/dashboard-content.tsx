@@ -188,7 +188,7 @@ export function DashboardContent() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4 sm:gap-5">
       <div className="flex flex-col gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-zinc-500">{formatLastSync(data.last_sync_at)}</p>
         <Button variant="outline" size="sm" onClick={() => void syncLastWeek()} disabled={syncing}>
@@ -227,7 +227,7 @@ export function DashboardContent() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[8fr_4fr]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[8fr_4fr]">
         <RecentActivitiesCard activities={data.recent_activities} />
         <UpcomingWorkoutsCard workouts={data.upcoming_workouts} />
       </div>

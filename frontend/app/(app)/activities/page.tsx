@@ -4,8 +4,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ActivitiesPage() {
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6">Activities</h1>
+    <div className="px-4 py-5 sm:p-6 max-w-4xl mx-auto">
+      <h1 className="text-xl sm:text-2xl font-semibold mb-6">Activities</h1>
       <Suspense fallback={<FeedSkeleton />}>
         <ActivityFeed />
       </Suspense>

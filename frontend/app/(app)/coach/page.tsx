@@ -30,6 +30,7 @@ export default function CoachPage() {
   const [streaming, setStreaming] = useState(false);
   const [newGoal, setNewGoal] = useState("");
   const [addingGoal, setAddingGoal] = useState(false);
+  const [goalsOpen, setGoalsOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -186,10 +187,23 @@ export default function CoachPage() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Goals sidebar */}
-      <aside className="w-64 shrink-0 bg-white border-r flex flex-col">
-        <div className="p-4 border-b">
+      {/* Mobile goals backdrop */}
+      <div
+        className={`fixed inset-0 z-40 bg-zinc-950/20 transition-opacity lg:hidden ${goalsOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        onClick={() => setGoalsOpen(false)}
+      />
+
+      {/* Goals sidebar — persistent on desktop, slide-out overlay on mobile */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-white border-r transition-transform duration-200 lg:relative lg:z-auto lg:translate-x-0 lg:shrink-0 ${goalsOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="p-4 border-b flex items-center justify-between">
           <h2 className="font-semibold text-sm">Goals</h2>
+          <button
+            type="button"
+            onClick={() => setGoalsOpen(false)}
+            className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 lg:hidden"
+          >
+            Close
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
           {goals.length === 0 && (
@@ -228,9 +242,19 @@ export default function CoachPage() {
       {/* Chat */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex items-center justify-between px-6 py-3 border-b bg-white">
-          <div>
-            <h1 className="font-semibold">AI Coach</h1>
-            <p className="text-xs text-zinc-400">Powered by ChatGPT · context includes your last 90 days</p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setGoalsOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 hover:text-zinc-900 lg:hidden"
+              aria-label="Open goals"
+            >
+              🎯 Goals
+            </button>
+            <div>
+              <h1 className="font-semibold">AI Coach</h1>
+              <p className="text-xs text-zinc-400">Powered by ChatGPT · context includes your last 90 days</p>
+            </div>
           </div>
           {messages.length > 0 && (
             <Button variant="ghost" size="sm" onClick={clearHistory} className="text-zinc-400 hover:text-zinc-700">
@@ -240,7 +264,7 @@ export default function CoachPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4 pb-24 lg:pb-4 flex flex-col gap-4">
           {messages.length === 0 && !streaming && (
             <div className="text-center py-16 text-zinc-400">
               <p className="text-4xl mb-3">🤖</p>
@@ -264,7 +288,7 @@ export default function CoachPage() {
 
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+              <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
                 msg.role === "user"
                   ? "bg-zinc-900 text-white rounded-br-sm"
                   : "bg-white border border-zinc-100 text-zinc-800 rounded-bl-sm"
@@ -289,7 +313,7 @@ export default function CoachPage() {
         </div>
 
         {/* Input */}
-        <div className="px-6 py-4 border-t bg-white">
+        <div className="px-6 py-4 border-t bg-white fixed bottom-0 left-0 right-0 lg:relative lg:bottom-auto">
           <div className="flex gap-2 max-w-3xl mx-auto">
             <Input
               value={input}

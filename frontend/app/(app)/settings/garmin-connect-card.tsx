@@ -241,7 +241,7 @@ export function GarminConnectCard() {
         )}
 
         {status?.connected ? (
-          <div className="flex items-center justify-between rounded-md border p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-md border p-3">
             <div>
               <p className="text-sm font-medium">{status.garmin_email}</p>
               {status.last_sync_at ? (
@@ -309,6 +309,7 @@ export function GarminConnectCard() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    className="min-h-[44px]"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -320,6 +321,7 @@ export function GarminConnectCard() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    className="min-h-[44px]"
                   />
                 </div>
                 <Button type="submit" disabled={loading} className="w-fit">
@@ -343,6 +345,7 @@ export function GarminConnectCard() {
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    className="min-h-[44px]"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">

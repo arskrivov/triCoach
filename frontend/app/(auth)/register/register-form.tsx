@@ -42,7 +42,7 @@ export function RegisterForm() {
   }
 
   return (
-    <Card className="w-full max-w-sm shadow-sm">
+    <Card className="w-full max-w-[400px] shadow-sm">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Personal Coach</CardTitle>
         <p className="text-sm text-zinc-500">Create your account</p>
@@ -58,6 +58,7 @@ export function RegisterForm() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
+              className="min-h-[44px]"
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -69,6 +70,7 @@ export function RegisterForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              className="min-h-[44px]"
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -81,6 +83,7 @@ export function RegisterForm() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
+              className="min-h-[44px]"
             />
           </div>
           {error && <p className="text-sm text-red-500">{error}</p>}

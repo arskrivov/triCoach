@@ -53,7 +53,7 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
     <div className="rounded-2xl border border-zinc-100 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
         <p className={SECTION_LABEL_CLASS}>30-day trends</p>
-        <div className="flex gap-4 text-xs text-zinc-400">
+        <div className="flex flex-wrap gap-4 text-xs text-zinc-400">
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-0.5 w-3 rounded bg-indigo-500" />
             Sleep score
@@ -68,6 +68,7 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
           </span>
         </div>
       </div>
+      <div className="min-h-[160px]">
       <ResponsiveContainer width="100%" height={180}>
         <ComposedChart data={visible} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
@@ -102,6 +103,7 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
           <ReferenceLine yAxisId="score" y={85} stroke="#6366f1" strokeDasharray="4 2" strokeWidth={0.75} opacity={0.4} />
           <ReferenceLine yAxisId="score" y={70} stroke="#6366f1" strokeDasharray="4 2" strokeWidth={0.75} opacity={0.4} />
           <Tooltip
+            wrapperStyle={{ zIndex: 50 }}
             contentStyle={{ fontSize: 11, borderRadius: 8, padding: "6px 10px" }}
             labelFormatter={(l) => formatChartDate(String(l))}
             formatter={(value, name) => {
@@ -144,6 +146,7 @@ function RecoveryTrendChart({ data }: { data: HealthSparklinePoint[] }) {
           />
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -277,9 +280,9 @@ export function RecoveryOverviewCard({
             return (
               <div
                 key={metric.key}
-                className="grid grid-cols-[1.6fr_0.7fr_0.7fr_64px_0.8fr] items-center gap-2 rounded-xl border border-zinc-100 px-3 py-2 text-sm"
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-zinc-100 px-3 py-2 text-sm lg:grid lg:grid-cols-[1.6fr_0.7fr_0.7fr_64px_0.8fr] lg:gap-2"
               >
-                <p className="font-medium text-zinc-700">{metric.label}</p>
+                <p className="w-full font-medium text-zinc-700 lg:w-auto">{metric.label}</p>
                 <div>
                   <p className={SECTION_LABEL_CLASS}>Now</p>
                   <p className="font-semibold text-zinc-900">{fmt(metric.current, metric.unit)}</p>
@@ -288,17 +291,19 @@ export function RecoveryOverviewCard({
                   <p className={SECTION_LABEL_CLASS}>7d avg</p>
                   <p className="font-semibold text-zinc-900">{fmt(metric.avg_7d, "")}</p>
                 </div>
-                {/* Mini sparkline */}
-                {spark ? (
-                  <MiniSparkline
-                    data={recovery.sparkline}
-                    dataKey={spark.dataKey}
-                    stroke={spark.stroke}
-                    higherIsBetter={spark.higherIsBetter}
-                  />
-                ) : (
-                  <div className="h-8 w-16" />
-                )}
+                {/* Mini sparkline — hidden on mobile to reduce clutter */}
+                <div className="hidden lg:block">
+                  {spark ? (
+                    <MiniSparkline
+                      data={recovery.sparkline}
+                      dataKey={spark.dataKey}
+                      stroke={spark.stroke}
+                      higherIsBetter={spark.higherIsBetter}
+                    />
+                  ) : (
+                    <div className="h-8 w-16" />
+                  )}
+                </div>
                 <div className={getTrendColor(metric.direction_vs_7d)}>
                   <p className={SECTION_LABEL_CLASS}>Trend</p>
                   <p className="font-semibold">{getTrendLabel(metric.direction_vs_7d)}</p>
