@@ -57,7 +57,111 @@ RECOVERY_METRICS = (
 
 BRIEFING_READY_HOUR = 6
 
+# ---------------------------------------------------------------------------
+# System prompt for the AI coach briefing (used by _generate_briefing)
+# ---------------------------------------------------------------------------
 
+BRIEFING_SYSTEM_PROMPT = """\
+You are an elite triathlon coach and exercise physiologist specialising in \
+swim, bike, run, strength, and mobility. You combine deep multi-sport \
+coaching experience with evidence-based performance and longevity science — \
+zone 2 aerobic base building, HRV-guided intensity modulation, sleep \
+architecture optimisation, and periodisation principles informed by current \
+research from Huberman, Attia, and peer-reviewed sports science.
+
+CROSS-DISCIPLINE IMPACT AWARENESS
+You always reason about how training in one discipline affects another:
+- Heavy lower-body strength work (squats, deadlifts) reduces next-day run \
+and bike quality.
+- High swim volume stresses shoulders and limits upper-body strength capacity.
+- Skipped mobility sessions compound injury risk across all disciplines.
+- Back-to-back high-TSS days in any discipline suppress HRV and readiness.
+Factor these interactions into every recommendation.
+
+INTERPRETIVE ANALYSIS STYLE
+- Explain the physiological or performance significance of each metric you \
+cite — do not merely list numbers.
+- Connect related metrics across domains: link poor sleep to recommended \
+training intensity reduction, link high training load to elevated resting HR, \
+link HRV trends to readiness shifts.
+- Ground every recommendation in a specific data point from the athlete's \
+daily digest. State what the athlete should do and why.
+- NEVER use generic wellness filler such as "stay hydrated", "listen to your \
+body", "make sure to stretch", "great job", or "it is important to". Every \
+sentence must reference athlete-specific data.
+
+RECENCY WEIGHTING
+Each day in the 7-day digest carries a `recency_weight` field. Weight your \
+analysis accordingly:
+- Yesterday (highest weight) is the primary signal for today's \
+recommendations.
+- Today's entry contains finalised overnight recovery metrics but partial \
+activity data — treat recovery metrics as current, ignore null step/calorie \
+fields.
+- Data from 5-7 days ago is background context for trend detection only.
+
+PLANNED WORKOUT AWARENESS
+The prompt includes a `planned_workouts_today` array with today's scheduled \
+sessions (name, discipline, estimated duration, estimated TSS). Factor these \
+into your recommendations:
+- If a hard session is planned, ensure recovery supports it or advise \
+modification.
+- If no workouts are planned, note the rest day opportunity and suggest \
+recovery or mobility work.
+- Never contradict the planned schedule without citing a specific recovery \
+concern.
+
+OUTPUT FORMAT — JSON only, no markdown, no prose outside JSON.
+{
+  "sleep_analysis": "2-3 sentences on last night's recovery and how it \
+connects to recent training load. Explain physiological significance.",
+  "activity_analysis": "2-3 sentences on training load trend, \
+fitness/fatigue/form direction, and what it means for the next 2-3 days. \
+Use plain English for CTL/ATL/TSB (e.g. 'fitness level', 'fatigue', 'form').",
+  "recommendations": [
+    "Exactly 4 specific, actionable items.",
+    "At least one must address sleep or recovery.",
+    "At least one must address training or activity.",
+    "Each must reference a metric from the data. No generic advice."
+  ],
+  "caution": "Mandatory single sentence identifying a metric combination \
+that warrants attention (e.g. TSB dropping below -30 while readiness is low, \
+or consecutive nights of poor sleep before a key session). Never null."
+}
+
+COHERENCE RULE: All 4 recommendations and the caution must be internally \
+coherent — no recommendation may contradict another or the caution. If \
+recovery is poor, do not recommend high intensity. If the athlete is fresh, \
+do not over-restrict training.
+
+Use plain English for metrics: say 'fitness level (CTL)' not just 'CTL', \
+'fatigue (ATL)' not just 'ATL', 'form (TSB)' not just 'TSB'. \
+Reference VO2max when relevant. Cite actual numbers. Sound like a coach who \
+knows this athlete.
+"""
+
+
+def _compute_recency_weights(num_days: int = 7) -> list[float]:
+    """Compute recency weights for a multi-day digest.
+
+    Yesterday (days_ago=1) and today (days_ago=0) receive the highest raw
+    weight.  Weights decay exponentially for older days and are normalised
+    to sum to 1.0.  Yesterday is guaranteed to receive at least 0.25 of the
+    total weight.
+
+    The returned list is ordered oldest-first (index 0 = most distant day,
+    index -2 = yesterday, index -1 = today), matching the iteration order
+    used by ``_build_daily_prompt_digest``.
+    """
+    raw: list[float] = []
+    for days_ago in range(num_days - 1, -1, -1):
+        # days_ago=0 is today, days_ago=1 is yesterday — both get max weight
+        if days_ago <= 1:
+            raw.append(2.0 ** (num_days - 2))
+        else:
+            raw.append(2.0 ** (num_days - 1 - days_ago))
+    total = sum(raw)
+    return [round(w / total, 3) for w in raw]
 
 
 
@@ -95,37 +199,106 @@ def _heuristic_briefing(overview: dict[str, Any], local_date: date, local_time: 
     recovery = overview["recovery"]
     activity = overview["activity"]
     last_night = recovery["last_night"]
-    recommendations: list[str] = []
 
-    if recovery["status"] == "strained":
-        recommendations.append("Keep intensity capped today and bias toward easy aerobic work or mobility.")
-    elif recovery["status"] == "strong":
-        recommendations.append("Recovery supports quality work today if it matches your plan.")
-    else:
-        recommendations.append("Train as planned, but keep an eye on how you feel in the warm-up.")
+    # ------------------------------------------------------------------
+    # Build recovery-focused recommendations (at least 1 guaranteed)
+    # ------------------------------------------------------------------
+    recovery_recs: list[str] = []
 
     sleep_score = last_night.get("sleep_score") or 0
     hrv = last_night.get("hrv_last_night")
+
+    if recovery["status"] == "strained":
+        recovery_recs.append("Keep intensity capped today and bias toward easy aerobic work or mobility.")
+    elif recovery["status"] == "strong":
+        recovery_recs.append("Recovery supports quality work today if it matches your plan.")
+
     if sleep_score < 70:
-        recommendations.append(
+        recovery_recs.append(
             f"Last night's sleep score was {sleep_score} — protect tonight's window and cut screens an hour before bed."
         )
     elif sleep_score < 80:
-        recommendations.append("Sleep was adequate but not optimal — aim for an earlier bedtime tonight.")
+        recovery_recs.append("Sleep was adequate but not optimal — aim for an earlier bedtime tonight.")
 
     if (last_night.get("respiration_sleep") or 0) >= 16:
-        recommendations.append("Elevated sleep respiration — watch late-day alcohol, heavy meals, and hydration.")
+        recovery_recs.append("Elevated sleep respiration — watch late-day alcohol, heavy meals, and hydration.")
 
     if hrv is not None:
-        # Check if HRV is notably below resting HR context
         rhr = last_night.get("resting_hr") or 0
         if rhr > 55:
-            recommendations.append(f"Resting HR of {rhr} bpm is elevated — consider a lighter day to let the nervous system settle.")
+            recovery_recs.append(f"Resting HR of {rhr} bpm is elevated — consider a lighter day to let the nervous system settle.")
+
+    # Ensure at least one recovery recommendation
+    if not recovery_recs:
+        recovery_recs.append(
+            "Maintain your current sleep routine — consistency supports parasympathetic recovery."
+        )
+
+    # ------------------------------------------------------------------
+    # Build training-focused recommendations (at least 1 guaranteed)
+    # ------------------------------------------------------------------
+    training_recs: list[str] = []
+
+    if activity["status"] == "idle":
+        training_recs.append("No recent training load recorded — schedule a session to rebuild momentum.")
+    elif activity["status"] == "overreaching":
+        training_recs.append("Load has risen while recovery is soft — swap today's hard session for an easy spin or swim.")
+    elif activity["status"] == "building":
+        training_recs.append("Training load is ramping up — ensure recovery days are genuinely easy to absorb the work.")
+    elif activity["status"] == "lighter":
+        training_recs.append("Load is lighter this week — a good window for a quality session if recovery allows.")
 
     if activity["planned"]["upcoming_count"] == 0:
-        recommendations.append("Schedule the next key workout so your week has structure.")
+        training_recs.append("Schedule the next key workout so your week has structure.")
     elif activity["planned"]["completion_rate_this_week"] is not None and activity["planned"]["completion_rate_this_week"] < 0.5:
-        recommendations.append("Prioritize plan compliance over adding extra unplanned sessions.")
+        training_recs.append("Prioritize plan compliance over adding extra unplanned sessions.")
+
+    # Ensure at least one training recommendation
+    if not training_recs:
+        training_recs.append(
+            "Continue with your planned training — current load is manageable."
+        )
+
+    # ------------------------------------------------------------------
+    # Merge and pad to exactly 4 recommendations
+    # ------------------------------------------------------------------
+    # Take at least 1 from each category, then fill from whichever has more
+    recommendations: list[str] = []
+    recommendations.append(recovery_recs[0])
+    recommendations.append(training_recs[0])
+
+    # Pool remaining candidates (recovery extras first, then training extras)
+    remaining = recovery_recs[1:] + training_recs[1:]
+
+    for rec in remaining:
+        if len(recommendations) >= 4:
+            break
+        recommendations.append(rec)
+
+    # Default fillers if we still don't have 4
+    default_fillers = [
+        "Maintain your current sleep routine — consistency supports parasympathetic recovery.",
+        "Continue with your planned training — current load is manageable.",
+        "A 10-minute mobility session today can reduce cumulative injury risk across all disciplines.",
+        "Review your weekly plan and confirm the next key session is scheduled.",
+    ]
+    for filler in default_fillers:
+        if len(recommendations) >= 4:
+            break
+        if filler not in recommendations:
+            recommendations.append(filler)
+
+    recommendations = recommendations[:4]
+
+    # ------------------------------------------------------------------
+    # Always populate caution (never None)
+    # ------------------------------------------------------------------
+    if recovery["status"] == "strained":
+        caution = "HRV, sleep, and readiness are all softening — hold back on intensity today."
+    elif recovery["status"] == "strong":
+        caution = "Strong recovery doesn't mean unlimited capacity — respect planned rest days."
+    else:
+        caution = "Mixed recovery signals — monitor how you feel in the warm-up and adjust intensity if needed."
 
     # Build sleep analysis with available numbers
     sleep_hours = last_night.get("sleep_duration_hours")
@@ -143,16 +316,21 @@ def _heuristic_briefing(overview: dict[str, Any], local_date: date, local_time: 
         "ai_enabled": bool(settings.openai_api_key),
         "sleep_analysis": sleep_analysis,
         "activity_analysis": activity["headline"],
-        "recommendations": recommendations[:4],
-        "caution": "HRV, sleep, and readiness are all softening — hold back on intensity today." if recovery["status"] == "strained" else None,
+        "recommendations": recommendations,
+        "caution": caution,
     }
 
 
-def _format_health_for_prompt(health: DailyHealthRow | None) -> dict[str, Any]:
+def _format_health_for_prompt(
+    health: DailyHealthRow | None,
+    is_today: bool = False,
+) -> dict[str, Any]:
     """Format a single day's health data into the AI prompt structure.
 
     Args:
         health: DailyHealthRow for the day, or None if no data.
+        is_today: When True, set steps and daily_calories to None since
+            they are partial metrics still accumulating during the current day.
 
     Returns:
         Dict with health metrics formatted for the AI prompt.
@@ -168,8 +346,8 @@ def _format_health_for_prompt(health: DailyHealthRow | None) -> dict[str, Any]:
         "stress": _to_float(health.stress_avg) if health else None,
         "spo2": _to_float(health.spo2_avg) if health else None,
         "respiration": _to_float(health.respiration_avg) if health else None,
-        "steps": _to_float(health.steps) if health else None,
-        "daily_calories": _to_float(health.daily_calories) if health else None,
+        "steps": None if is_today else (_to_float(health.steps) if health else None),
+        "daily_calories": None if is_today else (_to_float(health.daily_calories) if health else None),
     }
 
 
@@ -235,8 +413,10 @@ def _build_daily_prompt_digest(
         "by_discipline": {},
     }
 
+    weights = _compute_recency_weights(7)
+
     digest: list[dict[str, Any]] = []
-    for days_ago in range(6, -1, -1):
+    for idx, days_ago in enumerate(range(6, -1, -1)):
         day = local_date - timedelta(days=days_ago)
         iso_date = day.isoformat()
         health = health_by_date.get(iso_date)
@@ -244,7 +424,8 @@ def _build_daily_prompt_digest(
         digest.append(
             {
                 "date": iso_date,
-                "health": _format_health_for_prompt(health),
+                "recency_weight": weights[idx],
+                "health": _format_health_for_prompt(health, is_today=(day == local_date)),
                 "training": {
                     "sessions": training["sessions"],
                     "distance_km": round(training["distance_km"], 1),
@@ -271,6 +452,7 @@ def _build_ai_prompt(
     activities_7d: list[ActivityRow],
     goals: list[dict[str, Any]],
     fitness: dict[str, Any],
+    planned_workouts: list[dict[str, Any]] | None = None,
 ) -> str:
     prompt = {
         "date": local_date.isoformat(),
@@ -286,6 +468,7 @@ def _build_ai_prompt(
             {"description": g.get("description"), "sport": g.get("sport"), "target_date": g.get("target_date")}
             for g in goals[:3]
         ],
+        "planned_workouts_today": planned_workouts if planned_workouts is not None else [],
     }
     return json.dumps(prompt, ensure_ascii=True, default=str)
 
@@ -300,13 +483,39 @@ def _parse_ai_briefing(text: str, fallback: dict[str, Any]) -> dict[str, Any]:
     recommendations = parsed.get("recommendations")
     if not isinstance(recommendations, list):
         recommendations = fallback["recommendations"]
+
+    # Convert all items to strings
+    recs = [str(item) for item in recommendations]
+
+    # Pad from fallback when fewer than 4, using items not already present first
+    if len(recs) < 4:
+        for fb_rec in fallback["recommendations"]:
+            if len(recs) >= 4:
+                break
+            if fb_rec not in recs:
+                recs.append(fb_rec)
+        # If still fewer than 4 (e.g. fallback has duplicates), add remaining
+        # fallback items even if they duplicate existing entries
+        for fb_rec in fallback["recommendations"]:
+            if len(recs) >= 4:
+                break
+            recs.append(fb_rec)
+
+    # Truncate to exactly 4
+    recs = recs[:4]
+
+    # Substitute fallback caution when AI caution is null, empty string, or missing
+    caution = parsed.get("caution")
+    if not caution or not isinstance(caution, str) or caution.strip() == "":
+        caution = fallback["caution"]
+
     return {
         **fallback,
         "source": "ai",
         "sleep_analysis": str(parsed.get("sleep_analysis") or fallback["sleep_analysis"]),
         "activity_analysis": str(parsed.get("activity_analysis") or fallback["activity_analysis"]),
-        "recommendations": [str(item) for item in recommendations][:4],
-        "caution": parsed.get("caution") or fallback["caution"],
+        "recommendations": recs,
+        "caution": caution,
     }
 
 
@@ -364,6 +573,7 @@ async def _generate_briefing(
     health_rows_7d: list[DailyHealthRow],
     activities_7d: list[ActivityRow],
     goals: list[dict[str, Any]],
+    planned_workouts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     fallback = _heuristic_briefing(overview, local_date, local_time)
     if not settings.openai_api_key:
@@ -375,35 +585,7 @@ async def _generate_briefing(
         client = OpenAI(api_key=settings.openai_api_key)
         response = client.responses.create(
             model=settings.openai_analysis_model,
-            instructions=(
-                "You are an elite endurance coach and exercise physiologist — think TrainingPeaks + Whoop combined. "
-                "You have 7 days of an athlete's training data: sessions by discipline (swim/bike/run/strength/mobility), "
-                "TSS (Training Stress Score), distance, duration, calories burned per session, avg HR, "
-                "plus fitness metrics: Fitness (CTL = 42-day training load average), "
-                "Fatigue (ATL = 7-day training load average), Form (TSB = Fitness minus Fatigue), "
-                "and VO2max estimates for running and cycling. "
-                "You also have daily recovery context: HRV, resting HR, sleep score, readiness, stress, steps, calories. "
-                "\n\n"
-                "ANALYSIS RULES:\n"
-                "- Weight the last 3 days heavily, especially yesterday, as the primary signal.\n"
-                "- Use plain English for metrics: say 'fitness level (CTL)' not just 'CTL', "
-                "'fatigue (ATL)' not just 'ATL', 'form (TSB)' not just 'TSB'.\n"
-                "- Connect training to recovery: e.g. 'yesterday's 85 TSS ride likely explains today's elevated resting HR'.\n"
-                "- Reference VO2max when relevant: e.g. 'your running VO2max of 54 suggests you can handle more aerobic volume'.\n"
-                "- Be specific — cite actual numbers. Sound like a coach who knows this athlete.\n"
-                "- Avoid filler phrases like 'great job', 'it is important to', 'make sure to'.\n"
-                "\n\n"
-                "OUTPUT: Return JSON only with exactly these keys:\n"
-                "sleep_analysis: 2-3 sentences on last night's recovery and how it connects to recent training load.\n"
-                "activity_analysis: 2-3 sentences on training load trend, fitness/fatigue/form direction, "
-                "and what it means for the next 2-3 days. Use plain English for CTL/ATL/TSB.\n"
-                "recommendations: list of exactly 3 specific, actionable items. Each must reference "
-                "a metric from the data. No generic advice.\n"
-                "caution: single sentence if a metric combination warrants attention "
-                "(e.g. TSB dropping below -30 while readiness is low), otherwise null.\n"
-                "\n"
-                "No markdown. No prose outside JSON. Numbers only from the provided data."
-            ),
+            instructions=BRIEFING_SYSTEM_PROMPT,
             input=_build_ai_prompt(
                 timezone_name,
                 local_date,
@@ -411,8 +593,9 @@ async def _generate_briefing(
                 activities_7d,
                 goals,
                 overview["activity"]["fitness"],
+                planned_workouts=planned_workouts,
             ),
-            max_output_tokens=700,
+            max_output_tokens=1000,
         )
         briefing = _parse_ai_briefing(response.output_text.strip(), fallback)
         briefing["generated_at"] = datetime.now(timezone.utc).isoformat()
@@ -434,6 +617,7 @@ async def _resolve_briefing(
     activities_7d: list[ActivityRow],
     goals: list[dict[str, Any]],
     allow_generate: bool = False,
+    planned_workouts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     signature = _today_data_signature(today_health, today_activities, local_date, timezone_name)
     if signature is None:
@@ -454,6 +638,7 @@ async def _resolve_briefing(
             health_rows_7d=health_rows_7d,
             activities_7d=activities_7d,
             goals=goals,
+            planned_workouts=planned_workouts,
         )
 
     existing = existing_res.data[0] if existing_res.data else None
@@ -471,6 +656,7 @@ async def _resolve_briefing(
         health_rows_7d=health_rows_7d,
         activities_7d=activities_7d,
         goals=goals,
+        planned_workouts=planned_workouts,
     )
     payload = {
         "user_id": user.id,
@@ -779,6 +965,10 @@ async def build_dashboard_overview(
         "upcoming_workouts": upcoming_workouts,
         "fitness_timeline": fitness_timeline[-42:],
     }
+    today_planned = [
+        w for w in upcoming_workouts
+        if w.get("scheduled_date") == today.isoformat()
+    ]
     overview["briefing"] = await _resolve_briefing(
         overview,
         user=user,
@@ -792,5 +982,6 @@ async def build_dashboard_overview(
         activities_7d=last_7_activities,
         goals=goals,
         allow_generate=allow_briefing_generation,
+        planned_workouts=today_planned,
     )
     return overview

@@ -16,6 +16,7 @@ import pytest
 
 # Import private helpers directly for unit testing
 from app.services.dashboard import (
+    BRIEFING_SYSTEM_PROMPT,
     _activity_status,
     _recovery_status,
     _today_data_signature,
@@ -256,3 +257,90 @@ class TestTodayDataSignature:
         result1 = _today_data_signature(health, [activity1, activity2], date(2024, 1, 15), "UTC")
         result2 = _today_data_signature(health, [activity2, activity1], date(2024, 1, 15), "UTC")
         assert result1 == result2
+
+
+# ---------------------------------------------------------------------------
+# BRIEFING_SYSTEM_PROMPT content tests (Task 4.6)
+# ---------------------------------------------------------------------------
+
+
+class TestBriefingSystemPrompt:
+    """Verify the system prompt contains key phrases required by the spec."""
+
+    def test_triathlon_persona(self):
+        """Prompt establishes a triathlon-focused coaching persona."""
+        prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
+        assert "triathlon" in prompt_lower
+        assert "swim" in prompt_lower
+        assert "bike" in prompt_lower
+        assert "run" in prompt_lower
+        assert "strength" in prompt_lower
+        assert "mobility" in prompt_lower
+
+    def test_cross_discipline_impact(self):
+        """Prompt includes cross-discipline impact awareness."""
+        prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
+        assert "cross-discipline" in prompt_lower
+        # Specific examples from requirements
+        assert "squat" in prompt_lower or "strength work" in prompt_lower
+        assert "swim volume" in prompt_lower or "shoulder" in prompt_lower
+        assert "mobility" in prompt_lower
+        assert "injury risk" in prompt_lower
+
+    def test_evidence_based_science(self):
+        """Prompt grounds advice in evidence-based science."""
+        prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
+        assert "evidence-based" in prompt_lower
+        assert "zone 2" in prompt_lower
+        assert "hrv" in prompt_lower
+        assert "sleep architecture" in prompt_lower
+        assert "periodisation" in prompt_lower or "periodization" in prompt_lower
+
+    def test_four_recommendations(self):
+        """Prompt requires exactly 4 recommendations."""
+        prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
+        assert "exactly 4" in prompt_lower
+        assert "recovery" in prompt_lower
+        assert "training" in prompt_lower
+
+    def test_mandatory_caution(self):
+        """Prompt requires a mandatory non-null caution field."""
+        prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
+        assert "caution" in prompt_lower
+        assert "never null" in prompt_lower or "mandatory" in prompt_lower
+
+    def test_no_generic_filler(self):
+        """Prompt prohibits generic wellness filler."""
+        prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
+        assert "stay hydrated" in prompt_lower  # listed as prohibited example
+        assert "listen to your body" in prompt_lower  # listed as prohibited example
+        # The prompt should contain these as examples of what NOT to say
+        assert "generic" in prompt_lower or "filler" in prompt_lower
+
+    def test_recency_weighting(self):
+        """Prompt instructs the model to use recency weights."""
+        prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
+        assert "recency_weight" in prompt_lower
+        assert "yesterday" in prompt_lower
+        assert "primary signal" in prompt_lower
+
+    def test_planned_workouts(self):
+        """Prompt instructs the model to factor in planned workouts."""
+        prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
+        assert "planned_workouts_today" in prompt_lower
+        assert "planned" in prompt_lower
+        assert "scheduled" in prompt_lower
+
+    def test_interpretive_analysis_style(self):
+        """Prompt requires interpretive analysis, not just number listing."""
+        prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
+        assert "physiological" in prompt_lower
+        assert "significance" in prompt_lower
+        assert "connect" in prompt_lower
+        assert "data point" in prompt_lower
+
+    def test_coherence_rule(self):
+        """Prompt requires internal coherence across recommendations and caution."""
+        prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
+        assert "coherent" in prompt_lower or "coherence" in prompt_lower
+        assert "contradict" in prompt_lower
