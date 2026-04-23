@@ -37,6 +37,10 @@ const mockSparkline: HealthSparklinePoint[] = Array.from({ length: 30 }, (_, i) 
   sleep_score: 80,
   hrv: 65,
   resting_hr: 52,
+  stress: null,
+  spo2: null,
+  respiration: null,
+  readiness: null,
 }));
 
 const mockRecovery: RecoveryOverview & { sparkline: HealthSparklinePoint[] } = {

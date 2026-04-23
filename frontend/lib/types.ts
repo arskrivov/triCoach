@@ -35,6 +35,9 @@ export interface ActivityDetail extends ActivitySummary {
   hr_zones: unknown;
   exercises: ExerciseRecord[] | null;
   ai_analysis: string | null;
+  total_volume_kg: number | null;
+  primary_muscle_groups: string[] | null;
+  notes: string | null;
 }
 
 export interface ExerciseRecord {
