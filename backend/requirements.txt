@@ -6,8 +6,8 @@ uvicorn[standard]==0.32.1
 supabase==2.28.3
 
 # Config & validation
-pydantic==2.10.3
-pydantic-settings==2.6.1
+pydantic==2.11.7
+pydantic-settings==2.9.1
 python-dotenv==1.0.1
 
 # Auth (token validation delegated to Supabase Auth)
