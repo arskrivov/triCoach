@@ -105,24 +105,47 @@ def _heuristic_briefing(overview: dict[str, Any], local_date: date, local_time: 
     else:
         recommendations.append("Train as planned, but keep an eye on how you feel in the warm-up.")
 
-    if (last_night.get("sleep_score") or 0) < 75:
-        recommendations.append("Protect tonight's sleep window and reduce late-day stimulants or screen spillover.")
+    sleep_score = last_night.get("sleep_score") or 0
+    hrv = last_night.get("hrv_last_night")
+    if sleep_score < 70:
+        recommendations.append(
+            f"Last night's sleep score was {sleep_score} — protect tonight's window and cut screens an hour before bed."
+        )
+    elif sleep_score < 80:
+        recommendations.append("Sleep was adequate but not optimal — aim for an earlier bedtime tonight.")
+
     if (last_night.get("respiration_sleep") or 0) >= 16:
-        recommendations.append("Watch hydration, alcohol, and late heavy meals because respiration was elevated overnight.")
+        recommendations.append("Elevated sleep respiration — watch late-day alcohol, heavy meals, and hydration.")
+
+    if hrv is not None:
+        # Check if HRV is notably below resting HR context
+        rhr = last_night.get("resting_hr") or 0
+        if rhr > 55:
+            recommendations.append(f"Resting HR of {rhr} bpm is elevated — consider a lighter day to let the nervous system settle.")
+
     if activity["planned"]["upcoming_count"] == 0:
         recommendations.append("Schedule the next key workout so your week has structure.")
     elif activity["planned"]["completion_rate_this_week"] is not None and activity["planned"]["completion_rate_this_week"] < 0.5:
         recommendations.append("Prioritize plan compliance over adding extra unplanned sessions.")
+
+    # Build sleep analysis with available numbers
+    sleep_hours = last_night.get("sleep_duration_hours")
+    hrv_str = f", HRV {hrv:.0f} ms" if hrv else ""
+    sleep_str = f"{sleep_hours:.1f}h" if sleep_hours else "unknown duration"
+    sleep_analysis = (
+        f"Last night: {sleep_str} sleep, score {sleep_score}{hrv_str}. "
+        f"{recovery['headline']}"
+    )
 
     return {
         "source": "heuristic",
         "generated_for_date": local_date.isoformat(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "ai_enabled": bool(settings.openai_api_key),
-        "sleep_analysis": recovery["headline"],
+        "sleep_analysis": sleep_analysis,
         "activity_analysis": activity["headline"],
         "recommendations": recommendations[:4],
-        "caution": "Hold back if HRV, sleep, and readiness all soften together." if recovery["status"] == "strained" else None,
+        "caution": "HRV, sleep, and readiness are all softening — hold back on intensity today." if recovery["status"] == "strained" else None,
     }
 
 
@@ -143,6 +166,7 @@ def _format_health_for_prompt(health: DailyHealthRow | None) -> dict[str, Any]:
         "hrv_ms": _to_float(health.hrv_last_night) if health else None,
         "resting_hr": _to_float(health.resting_hr) if health else None,
         "readiness": _to_float(health.morning_readiness_score) if health else None,
+        "body_battery_high": _to_float(health.body_battery_high) if health else None,
         "stress": _to_float(health.stress_avg) if health else None,
         "spo2": _to_float(health.spo2_avg) if health else None,
         "respiration": _to_float(health.respiration_avg) if health else None,
@@ -354,13 +378,30 @@ async def _generate_briefing(
         response = client.responses.create(
             model=settings.openai_analysis_model,
             instructions=(
-                "You are a professional triathlon coach and sleep scientist. "
-                "Analyze the athlete's data and return JSON only with keys: "
-                "sleep_analysis (2-3 sentences on sleep quality and recovery trends, cite specific numbers), "
-                "activity_analysis (2-3 sentences on training load and fitness direction, cite specific numbers), "
-                "recommendations (list of 3-4 specific actionable items grounded in the metrics), "
-                "caution (single sentence if something needs attention, otherwise null). "
-                "No markdown. No prose outside JSON."
+                "You are an elite sleep scientist and endurance coach — think Whoop + Oura combined. "
+                "You have 7 days of an athlete's biometric data: sleep score, HRV, resting HR, readiness, "
+                "body battery, stress, SpO2, respiration, steps, daily calories, and training load (TSS by discipline). "
+                "\n\n"
+                "ANALYSIS RULES:\n"
+                "- Weight the last 3 days heavily, especially yesterday, as the primary signal.\n"
+                "- Use the 7-day window as context for trends and baselines.\n"
+                "- Connect dots across metrics: e.g. high calories + low HRV next morning, "
+                "hard training day + elevated resting HR, low steps + poor sleep.\n"
+                "- Be specific — cite actual numbers from the data, not generic advice.\n"
+                "- Sound like a coach who knows this athlete, not a chatbot.\n"
+                "- Avoid filler phrases like 'great job', 'it is important to', 'make sure to'.\n"
+                "\n\n"
+                "OUTPUT: Return JSON only with exactly these keys:\n"
+                "sleep_analysis: 2-3 sentences. Lead with what last night's data shows and why "
+                "(connect to prior day's activity/calories/stress). Then note the 7-day trend.\n"
+                "activity_analysis: 2-3 sentences on training load, fitness direction (CTL/ATL/TSB), "
+                "and how recovery is tracking against training demand.\n"
+                "recommendations: list of exactly 3 specific, actionable items. Each must reference "
+                "a metric from the data. No generic wellness advice.\n"
+                "caution: single sentence if a metric combination warrants attention (e.g. HRV + "
+                "readiness both declining while load is rising), otherwise null.\n"
+                "\n"
+                "No markdown. No prose outside JSON. Numbers only from the provided data."
             ),
             input=_build_ai_prompt(
                 timezone_name,
@@ -370,7 +411,7 @@ async def _generate_briefing(
                 goals,
                 overview["activity"]["fitness"],
             ),
-            max_output_tokens=600,
+            max_output_tokens=700,
         )
         briefing = _parse_ai_briefing(response.output_text.strip(), fallback)
         briefing["generated_at"] = datetime.now(timezone.utc).isoformat()
