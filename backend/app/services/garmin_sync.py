@@ -286,9 +286,12 @@ async def sync_activities(user_id: str, sb: AsyncClient, days_back: int = 90) ->
 
     file_download_formats = (
         client.ActivityDownloadFormat.ORIGINAL,
-        client.ActivityDownloadFormat.TCX,
         client.ActivityDownloadFormat.GPX,
     )
+    # Max file size to store in Supabase (PostgREST has a ~1MB body limit).
+    # TCX files are excluded entirely — they can be 1-2MB and are redundant
+    # when we already have ORIGINAL (FIT) and GPX.
+    _MAX_FILE_BYTES = 900_000
     records: list[dict] = []
     garmin_ids = [
         int(summary["activityId"])
@@ -388,6 +391,12 @@ async def sync_activities(user_id: str, sb: AsyncClient, days_back: int = 90) ->
                 continue
             try:
                 payload = client.download_activity(str(garmin_id), download_format)
+                if len(payload) > _MAX_FILE_BYTES:
+                    logger.info(
+                        "Skipping %s file for activity %s: %d bytes exceeds limit",
+                        format_name, garmin_id, len(payload),
+                    )
+                    continue
                 file_records.append(
                     {
                         "user_id": user_id,
