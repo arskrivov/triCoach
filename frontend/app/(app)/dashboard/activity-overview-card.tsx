@@ -1,15 +1,57 @@
 /**
  * ActivityOverviewCard — training load, discipline breakdown, and fitness chart.
  *
- * Shows key training metrics, week-over-week discipline breakdown with calories,
- * and an embedded Fitness/Fatigue/Form chart.
+ * Shows key training metrics, week-over-week discipline breakdown with
+ * per-discipline intensity (pace / speed / avg duration), and an embedded
+ * Fitness/Fatigue/Form chart.
  * Optionally displays an AI-generated activity analysis from the briefing.
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCalories, formatSteps, getActivityStatusColor, calculateDelta } from "@/lib/format";
+import { getActivityStatusColor, calculateDelta } from "@/lib/format";
 import type { ActivityOverview, DisciplineSummary, FitnessPoint } from "@/lib/types";
 import { FitnessChart } from "@/components/fitness-chart";
 import { DashboardMetricTile } from "@/components/ui/metric-tile";
+
+type Discipline = "swim" | "bike" | "run" | "strength" | "mobility";
+
+/** Derive a per-discipline intensity metric from distance + duration. */
+function formatIntensity(d: DisciplineSummary, discipline: Discipline): { label: string; value: string } {
+  if (d.sessions === 0 || d.duration_hours === 0) {
+    const label =
+      discipline === "swim" ? "Avg pace" :
+      discipline === "bike" ? "Avg speed" :
+      discipline === "run" ? "Avg pace" :
+      "Avg dur";
+    return { label, value: "—" };
+  }
+
+  switch (discipline) {
+    case "run": {
+      // min/km
+      const paceMin = (d.duration_hours * 60) / d.distance_km;
+      const mins = Math.floor(paceMin);
+      const secs = Math.round((paceMin - mins) * 60);
+      return { label: "Avg pace", value: `${mins}:${secs.toString().padStart(2, "0")} /km` };
+    }
+    case "swim": {
+      // min/100m
+      const pace100 = (d.duration_hours * 60) / (d.distance_km * 10);
+      const mins = Math.floor(pace100);
+      const secs = Math.round((pace100 - mins) * 60);
+      return { label: "Avg pace", value: `${mins}:${secs.toString().padStart(2, "0")} /100m` };
+    }
+    case "bike": {
+      // km/h
+      const speed = d.distance_km / d.duration_hours;
+      return { label: "Avg speed", value: `${speed.toFixed(1)} km/h` };
+    }
+    default: {
+      // strength / mobility — avg duration per session
+      const avgMin = (d.duration_hours * 60) / d.sessions;
+      return { label: "Avg dur", value: `${Math.round(avgMin)} min` };
+    }
+  }
+}
 
 const SECTION_LABEL_CLASS = "text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400";
 const ANALYSIS_TEXT_CLASS = "text-sm leading-7 text-zinc-600";
@@ -26,15 +68,17 @@ const STATUS_LABELS: Record<string, string> = {
 interface DisciplineRowProps {
   label: string;
   icon: string;
+  discipline: Discipline;
   current: DisciplineSummary;
   previous: DisciplineSummary;
   showDistance: boolean;
+  vo2max?: number | null;
 }
 
-function DisciplineRow({ label, icon, current, previous, showDistance }: DisciplineRowProps) {
+function DisciplineRow({ label, icon, discipline, current, previous, showDistance, vo2max }: DisciplineRowProps) {
   if (current.sessions === 0 && previous.sessions === 0) return null;
 
-  const mainValue = showDistance
+  const distanceOrDuration = showDistance
     ? `${current.distance_km.toFixed(1)} km`
     : `${current.duration_hours.toFixed(1)} h`;
 
@@ -42,33 +86,42 @@ function DisciplineRow({ label, icon, current, previous, showDistance }: Discipl
     ? calculateDelta(current.distance_km, previous.distance_km, " km")
     : calculateDelta(current.duration_hours, previous.duration_hours, " h");
 
+  const hasVo2 = vo2max !== undefined;
+  const intensity = formatIntensity(current, discipline);
+
   return (
-    <div className="grid grid-cols-[1.8fr_0.9fr_0.7fr_0.9fr_0.8fr] items-center gap-2 rounded-xl border border-zinc-100 px-3 py-2.5 text-sm">
+    <div className={`grid ${hasVo2 ? "grid-cols-[1.8fr_0.7fr_0.9fr_0.8fr_0.9fr_0.8fr]" : "grid-cols-[1.8fr_0.7fr_0.9fr_0.8fr_0.9fr]"} items-center gap-2 rounded-xl border border-zinc-100 px-3 py-2.5 text-sm`}>
       <p className="font-medium text-zinc-700">
         {icon} {label}
       </p>
       <div>
-        <p className={SECTION_LABEL_CLASS}>This wk</p>
-        <p className="font-semibold text-zinc-900">{current.sessions > 0 ? mainValue : "—"}</p>
-      </div>
-      <div>
-        <p className={SECTION_LABEL_CLASS}>Sessions</p>
+        <p className={SECTION_LABEL_CLASS}>CW Sessions</p>
         <p className="font-semibold text-zinc-900">{current.sessions > 0 ? current.sessions : "—"}</p>
       </div>
       <div>
-        <p className={SECTION_LABEL_CLASS}>Avg kcal</p>
-        <p className="font-semibold text-zinc-900">
-          {current.avg_calories != null ? `${current.avg_calories}` : "—"}
-        </p>
+        <p className={SECTION_LABEL_CLASS}>{showDistance ? "CW Distance" : "CW Duration"}</p>
+        <p className="font-semibold text-zinc-900">{current.sessions > 0 ? distanceOrDuration : "—"}</p>
       </div>
       <div>
-        <p className={SECTION_LABEL_CLASS}>vs prev</p>
+        <p className={SECTION_LABEL_CLASS}>vs Prev Wk</p>
         {delta ? (
           <p className={`font-semibold ${delta.color}`}>{delta.text}</p>
         ) : (
           <p className="text-zinc-400">—</p>
         )}
       </div>
+      <div>
+        <p className={SECTION_LABEL_CLASS}>CW {intensity.label}</p>
+        <p className="font-semibold text-zinc-900">{intensity.value}</p>
+      </div>
+      {hasVo2 && (
+        <div>
+          <p className={SECTION_LABEL_CLASS}>VO₂max</p>
+          <p className="font-semibold text-zinc-900">
+            {vo2max != null ? vo2max.toFixed(0) : "—"}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -87,10 +140,6 @@ export function ActivityOverviewCard({
   const tsb = fitness.tsb;
   const tsbTone = tsb == null ? "text-zinc-400" : tsb >= 0 ? "text-emerald-600" : tsb >= -10 ? "text-sky-600" : tsb >= -30 ? "text-amber-600" : "text-rose-500";
   const statusLabel = STATUS_LABELS[activity.status] ?? activity.status;
-
-  // VO2max display — prefer running, fall back to cycling
-  const vo2max = fitness.vo2max_running ?? fitness.vo2max_cycling;
-  const vo2maxLabel = fitness.vo2max_running != null ? "Running VO₂max" : "Cycling VO₂max";
 
   return (
     <Card className="shadow-sm">
@@ -134,65 +183,48 @@ export function ActivityOverviewCard({
           <DashboardMetricTile
             label="Sessions 7d"
             value={`${last_7d.sessions}`}
-            subtitle={`${last_7d.duration_hours.toFixed(1)} h total`}
+            subtitle="This week"
           />
-          {vo2max != null ? (
-            <DashboardMetricTile
-              label={vo2maxLabel}
-              value={`${vo2max.toFixed(1)}`}
-              subtitle="mL/kg/min"
-            />
-          ) : (
-            <DashboardMetricTile
-              label="Daily steps"
-              value={formatSteps(activity.movement.steps_avg_7d !== null ? Math.round(activity.movement.steps_avg_7d) : null)}
-              subtitle="7d avg"
-            />
-          )}
+          <DashboardMetricTile
+            label="Duration 7d"
+            value={`${last_7d.duration_hours.toFixed(1)}h`}
+            subtitle="This week"
+          />
         </div>
-
-        {/* Secondary row: steps + calories when VO2max is shown */}
-        {vo2max != null && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <DashboardMetricTile
-              label="Daily steps"
-              value={formatSteps(activity.movement.steps_avg_7d !== null ? Math.round(activity.movement.steps_avg_7d) : null)}
-              subtitle="7d avg"
-            />
-            <DashboardMetricTile
-              label="Daily calories"
-              value={formatCalories(activity.movement.daily_calories_avg_7d !== null ? Math.round(activity.movement.daily_calories_avg_7d) : null)}
-              subtitle="7d avg"
-            />
-          </div>
-        )}
 
         {/* Discipline breakdown */}
         <div className="grid gap-1.5">
           <DisciplineRow
             label="Swim"
             icon="🏊"
+            discipline="swim"
             current={last_7d.by_discipline.swim}
             previous={activity.previous_7d.by_discipline.swim}
             showDistance
+            vo2max={null}
           />
           <DisciplineRow
             label="Bike"
             icon="🚴"
+            discipline="bike"
             current={last_7d.by_discipline.bike}
             previous={activity.previous_7d.by_discipline.bike}
             showDistance
+            vo2max={fitness.vo2max_cycling}
           />
           <DisciplineRow
             label="Run"
             icon="🏃"
+            discipline="run"
             current={last_7d.by_discipline.run}
             previous={activity.previous_7d.by_discipline.run}
             showDistance
+            vo2max={fitness.vo2max_running}
           />
           <DisciplineRow
             label="Strength"
             icon="🏋️"
+            discipline="strength"
             current={last_7d.by_discipline.strength}
             previous={activity.previous_7d.by_discipline.strength}
             showDistance={false}
@@ -200,6 +232,7 @@ export function ActivityOverviewCard({
           <DisciplineRow
             label="Mobility"
             icon="🤸"
+            discipline="mobility"
             current={last_7d.by_discipline.mobility}
             previous={activity.previous_7d.by_discipline.mobility}
             showDistance={false}
