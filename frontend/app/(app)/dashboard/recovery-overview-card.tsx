@@ -208,9 +208,14 @@ export function RecoveryOverviewCard({
 
   // Sparkline colour + axis mapping per metric key
   const sparklineConfig: Record<string, { stroke: string; dataKey: keyof HealthSparklinePoint; higherIsBetter: boolean }> = {
-    hrv_last_night: { stroke: "#10b981", dataKey: "hrv", higherIsBetter: true },
-    resting_hr: { stroke: "#f43f5e", dataKey: "resting_hr", higherIsBetter: false },
-    sleep_score: { stroke: "#6366f1", dataKey: "sleep_score", higherIsBetter: true },
+    hrv_last_night:                    { stroke: "#10b981", dataKey: "hrv",          higherIsBetter: true  },
+    resting_hr:                        { stroke: "#f43f5e", dataKey: "resting_hr",   higherIsBetter: false },
+    sleep_score:                       { stroke: "#6366f1", dataKey: "sleep_score",  higherIsBetter: true  },
+    stress_avg:                        { stroke: "#f97316", dataKey: "stress",       higherIsBetter: false },
+    pulse_ox_avg:                      { stroke: "#0ea5e9", dataKey: "spo2",         higherIsBetter: true  },
+    respiration_sleep:                 { stroke: "#8b5cf6", dataKey: "respiration",  higherIsBetter: false },
+    body_battery_high:                 { stroke: "#eab308", dataKey: "body_battery", higherIsBetter: true  },
+    morning_training_readiness_score:  { stroke: "#06b6d4", dataKey: "readiness",    higherIsBetter: true  },
   };
 
   return (

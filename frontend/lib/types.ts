@@ -167,6 +167,11 @@ export interface HealthSparklinePoint {
   sleep_score: number | null;
   hrv: number | null;
   resting_hr: number | null;
+  stress: number | null;
+  spo2: number | null;
+  respiration: number | null;
+  body_battery: number | null;
+  readiness: number | null;
 }
 
 export interface DashboardBriefing {

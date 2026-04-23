@@ -546,6 +546,11 @@ def _aggregate_recovery_data(
             "sleep_score": row.sleep_score if row else None,
             "hrv": row.hrv_last_night if row else None,
             "resting_hr": row.resting_hr if row else None,
+            "stress": row.stress_avg if row else None,
+            "spo2": row.spo2_avg if row else None,
+            "respiration": row.respiration_avg if row else None,
+            "body_battery": row.body_battery_high if row else None,
+            "readiness": row.morning_readiness_score if row else None,
         })
 
     last_night = {
