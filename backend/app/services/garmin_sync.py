@@ -114,7 +114,9 @@ def _parse_endurance(summary: dict, details: dict | None, splits: dict | None) -
     out["normalized_power_watts"] = _to_int(summary.get("normPower") or summary.get("normalizedPower"))
     out["avg_cadence"] = _to_int(
         summary.get("averageRunningCadenceInStepsPerMinute")
+        or summary.get("averageRunCadence")
         or summary.get("averageBikingCadenceInRevPerMin")
+        or summary.get("avgBikingCadenceInRevPerMin")
     )
     speed = summary.get("averageSpeed")
     speed_value = _to_float(speed)
@@ -449,12 +451,57 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
 
     end_date = date.today()
     start_date = end_date - td(days=days_back)
+    start_str = start_date.strftime("%Y-%m-%d")
+    end_str = end_date.strftime("%Y-%m-%d")
+
+    # Pre-fetch bulk endpoints that don't support per-day queries
+    # Steps: get_daily_steps works; get_stats/get_steps_data return 403
+    steps_by_date: dict[str, int] = {}
+    try:
+        daily_steps = client.get_daily_steps(start_str, end_str)
+        for item in (daily_steps or []):
+            if isinstance(item, dict):
+                cal_date = item.get("calendarDate")
+                total = _to_int(item.get("totalSteps"))
+                if cal_date and total and total > 0:
+                    steps_by_date[cal_date] = total
+    except Exception as e:
+        logger.warning("Could not fetch bulk daily steps for user %s: %s", user_id, e)
+
+    # Calories: /usersummary-service/stats/calories/daily/{start}/{end}
+    # This endpoint has a 28-day limit — chunk it the same way get_daily_steps does
+    calories_by_date: dict[str, int] = {}
+    try:
+        from datetime import timedelta as _td
+        chunk_start = start_date
+        while chunk_start <= end_date:
+            chunk_end = min(chunk_start + _td(days=27), end_date)
+            cal_resp = client.connectapi(
+                f"/usersummary-service/stats/calories/daily"
+                f"/{chunk_start.isoformat()}/{chunk_end.isoformat()}"
+            )
+            for item in (cal_resp or []):
+                if isinstance(item, dict):
+                    cal_date = item.get("calendarDate")
+                    values = item.get("values") or {}
+                    total = _to_int(values.get("totalCalories"))
+                    if cal_date and total and total > 0:
+                        calories_by_date[cal_date] = total
+            chunk_start = chunk_end + _td(days=1)
+    except Exception as e:
+        logger.warning("Could not fetch bulk daily calories for user %s: %s", user_id, e)
 
     records: list[dict] = []
     current = start_date
     while current <= end_date:
         date_str = current.strftime("%Y-%m-%d")
         row: dict[str, Any] = {"user_id": user_id, "date": date_str}
+
+        # Steps and calories from pre-fetched bulk data
+        if date_str in steps_by_date:
+            row["steps"] = steps_by_date[date_str]
+        if date_str in calories_by_date:
+            row["daily_calories"] = calories_by_date[date_str]
 
         try:
             hrv_data = client.get_hrv_data(date_str)
@@ -470,14 +517,21 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
         try:
             battery_data = client.get_body_battery(date_str)
             if battery_data and isinstance(battery_data, list):
-                values = [
-                    item.get("bodyBatteryLevel") or item.get("value")
-                    for item in battery_data
-                    if item.get("bodyBatteryLevel") or item.get("value")
-                ]
-                if values:
-                    row["body_battery_high"] = max(int(v) for v in values if v is not None)
-                    row["body_battery_low"] = min(int(v) for v in values if v is not None)
+                item = battery_data[0]
+                # New API structure: top-level 'charged' field = daily high
+                # Fallback: derive from bodyBatteryValuesArray [[timestamp, value], ...]
+                charged = _to_int(item.get("charged"))
+                if charged and charged > 0:
+                    row["body_battery_high"] = charged
+                    drained = _to_int(item.get("drained"))
+                    if drained is not None:
+                        row["body_battery_low"] = max(0, charged - drained)
+                else:
+                    vals_array = item.get("bodyBatteryValuesArray") or []
+                    values = [v[1] for v in vals_array if isinstance(v, (list, tuple)) and len(v) > 1]
+                    if values:
+                        row["body_battery_high"] = max(int(v) for v in values)
+                        row["body_battery_low"] = min(int(v) for v in values)
         except Exception:
             pass
 
@@ -541,54 +595,6 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
                 )
                 if avg_spo2 and avg_spo2 > 0:
                     row["spo2_avg"] = avg_spo2
-        except Exception:
-            pass
-
-        try:
-            rhr_data = client.get_rhr_day(date_str)
-            if rhr_data:
-                resting_hr = rhr_data.get("allMetrics", {}).get("metricsMap", {}).get("WELLNESS_RESTING_HEART_RATE")
-                if row.get("resting_hr") is None and resting_hr is not None:
-                    row["resting_hr"] = _to_int(resting_hr)
-        except Exception:
-            pass
-
-        try:
-            stats = client.get_stats(date_str)
-            if stats:
-                steps = _to_int(stats.get("totalSteps"))
-                if steps and steps > 0:
-                    row["steps"] = steps
-                calories = _to_int(
-                    stats.get("totalKilocalories")
-                    or stats.get("burnedKilocalories")
-                    or stats.get("activeKilocalories")
-                )
-                if calories and calories > 0:
-                    row["daily_calories"] = calories
-                if row.get("resting_hr") is None:
-                    row["resting_hr"] = _to_int(stats.get("restingHeartRate"))
-        except Exception:
-            pass
-
-        try:
-            if row.get("steps") is None:
-                steps_data = client.get_steps_data(date_str)
-                if isinstance(steps_data, list) and steps_data:
-                    step_candidates = []
-                    for item in steps_data:
-                        if not isinstance(item, dict):
-                            continue
-                        candidate = _to_int(
-                            item.get("totalSteps")
-                            or item.get("steps")
-                            or item.get("value")
-                            or item.get("stepValue")
-                        )
-                        if candidate is not None:
-                            step_candidates.append(candidate)
-                    if step_candidates:
-                        row["steps"] = max(step_candidates)
         except Exception:
             pass
 
