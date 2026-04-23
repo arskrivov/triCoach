@@ -134,14 +134,12 @@ def _parse_endurance(summary: dict, details: dict | None, splits: dict | None) -
 
 
 def _parse_strength(details: dict | None) -> dict:
-    out: dict[str, Any] = {"exercises": [], "total_sets": 0, "total_volume_kg": None, "primary_muscle_groups": None}
+    out: dict[str, Any] = {"exercises": [], "total_sets": 0}
     if not details:
         return out
     exercise_sets = details.get("exerciseSets") or []
     parsed: dict[str, dict] = {}
-    total_volume = 0.0
     total_sets = 0
-    has_weight = False
     for ex_set in exercise_sets:
         if ex_set.get("setType") == "REST":
             continue
@@ -158,9 +156,6 @@ def _parse_strength(details: dict | None) -> dict:
             weight_kg = round(float(weight_raw) / 1000, 2)
         duration_sec = ex_set.get("duration")
         rpe = ex_set.get("rpe")
-        if weight_kg and reps:
-            total_volume += weight_kg * int(reps)
-            has_weight = True
         total_sets += 1
         if ex_name not in parsed:
             parsed[ex_name] = {"name": ex_name, "muscle_groups": [], "sets": []}
@@ -176,11 +171,6 @@ def _parse_strength(details: dict | None) -> dict:
         parsed[ex_name]["sets"].append(set_data)
     out["exercises"] = list(parsed.values())
     out["total_sets"] = total_sets if total_sets > 0 else None
-    # Only write volume when we actually have weighted sets — bodyweight-only sessions
-    # produce 0.0 which is misleading; leave as null instead
-    out["total_volume_kg"] = round(total_volume, 2) if has_weight else None
-    # Garmin does not expose muscle group data via the API — leave as null
-    out["primary_muscle_groups"] = None
     return out
 
 

@@ -45,8 +45,6 @@ class ActivityRow(BaseModel):
     # Strength
     exercises: Any = None
     total_sets: int | None = None
-    total_volume_kg: float | None = None
-    primary_muscle_groups: list[str] | None = None
     # Yoga/Mobility
     session_type: str | None = None
 

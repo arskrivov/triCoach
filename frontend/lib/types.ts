@@ -32,7 +32,6 @@ export interface ActivityDetail extends ActivitySummary {
   laps: unknown;
   hr_zones: unknown;
   exercises: ExerciseRecord[] | null;
-  primary_muscle_groups: string[] | null;
   ai_analysis: string | null;
 }
 
