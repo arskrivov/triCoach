@@ -46,7 +46,7 @@ Backend: build_dashboard_overview()
     │   └─ goals (active only)
     ↓
     ├─ Aggregation & Calculation:
-    │   ├─ Recovery metrics (9 metrics × 7d/30d averages)
+    │   ├─ Recovery metrics (8 metrics × 7d/30d averages)
     │   ├─ Activity summaries (by discipline, time windows)
     │   ├─ Fitness timeline (CTL/ATL/TSB via fitness.py)
     │   └─ Briefing (AI via OpenAI or heuristic fallback)
@@ -205,7 +205,7 @@ The function executes four parallel queries using `asyncio.gather()`:
       pulse_ox_avg: number | null;
       morning_training_readiness_score: number | null;
     };
-    metrics: RecoveryMetricTrend[];  // 9 metrics (see RECOVERY_METRICS constant)
+    metrics: RecoveryMetricTrend[];  // 8 metrics (see RECOVERY_METRICS constant)
     sparkline: HealthSparklinePoint[]; // 30 days of sleep_score, hrv, resting_hr
   };
   
@@ -314,7 +314,7 @@ The function executes four parallel queries using `asyncio.gather()`:
 - Analysis text (from AI briefing or headline)
 - 6 metric tiles (sleep score, sleep time, HRV, resting HR, readiness, SpO2)
 - 30-day sparkline charts (sleep score, HRV, resting HR)
-- 5 detailed metric rows with current/7d/30d/trend
+- 6 detailed metric rows with current/7d/trend
 
 **Recovery Metrics** (from `RECOVERY_METRICS` constant):
 1. Sleep score
@@ -324,8 +324,7 @@ The function executes four parallel queries using `asyncio.gather()`:
 5. Sleep respiration (breaths/min)
 6. Stress (0-100)
 7. SpO2 (%)
-8. Body Battery high
-9. Morning readiness score
+8. Morning readiness score
 
 **Shared Components**:
 - `DashboardMetricTile` (6 instances)

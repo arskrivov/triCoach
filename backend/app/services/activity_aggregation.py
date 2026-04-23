@@ -156,14 +156,15 @@ def activity_summary_by_discipline(items: list[ActivityRow]) -> dict[str, dict[s
 
     Returns:
         Dict keyed by discipline name, each containing sessions (int),
-        distance_km (float), and duration_hours (float).
+        distance_km (float), duration_hours (float), avg_calories (float|None),
+        and avg_hr (int|None).
     """
     summary: dict[str, dict[str, Any]] = {
-        "swim": {"sessions": 0, "distance_km": 0.0, "duration_hours": 0.0},
-        "bike": {"sessions": 0, "distance_km": 0.0, "duration_hours": 0.0},
-        "run": {"sessions": 0, "distance_km": 0.0, "duration_hours": 0.0},
-        "strength": {"sessions": 0, "distance_km": 0.0, "duration_hours": 0.0},
-        "mobility": {"sessions": 0, "distance_km": 0.0, "duration_hours": 0.0},
+        "swim":     {"sessions": 0, "distance_km": 0.0, "duration_hours": 0.0, "_calories": [], "_hr": []},
+        "bike":     {"sessions": 0, "distance_km": 0.0, "duration_hours": 0.0, "_calories": [], "_hr": []},
+        "run":      {"sessions": 0, "distance_km": 0.0, "duration_hours": 0.0, "_calories": [], "_hr": []},
+        "strength": {"sessions": 0, "distance_km": 0.0, "duration_hours": 0.0, "_calories": [], "_hr": []},
+        "mobility": {"sessions": 0, "distance_km": 0.0, "duration_hours": 0.0, "_calories": [], "_hr": []},
     }
     for activity in items:
         key: str | None = None
@@ -183,8 +184,16 @@ def activity_summary_by_discipline(items: list[ActivityRow]) -> dict[str, dict[s
         entry["sessions"] += 1
         entry["distance_km"] += (activity.distance_meters or 0) / 1000
         entry["duration_hours"] += (activity.duration_seconds or 0) / 3600
+        if activity.calories:
+            entry["_calories"].append(activity.calories)
+        if activity.avg_hr:
+            entry["_hr"].append(activity.avg_hr)
 
     for entry in summary.values():
         entry["distance_km"] = round(entry["distance_km"], 1)
         entry["duration_hours"] = round(entry["duration_hours"], 1)
+        cal_list = entry.pop("_calories")
+        hr_list = entry.pop("_hr")
+        entry["avg_calories"] = round(sum(cal_list) / len(cal_list)) if cal_list else None
+        entry["avg_hr"] = round(sum(hr_list) / len(hr_list)) if hr_list else None
     return summary

@@ -130,6 +130,14 @@ def _parse_endurance(summary: dict, details: dict | None, splits: dict | None) -
         out["laps"] = laps
     out["tss"] = _training_load_from_summary(summary)
     out["intensity_factor"] = _to_float(summary.get("intensityFactor"))
+    # Training effect (aerobic 0–5, anaerobic 0–5)
+    out["aerobic_training_effect"] = _to_float(
+        summary.get("trainingEffect") or summary.get("aerobicTrainingEffect")
+    )
+    out["anaerobic_training_effect"] = _to_float(summary.get("anaerobicTrainingEffect"))
+    out["training_effect_label"] = (
+        summary.get("trainingEffectLabel") or summary.get("aerobicTrainingEffectMessage") or None
+    )
     return out
 
 
@@ -496,6 +504,19 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
     except Exception as e:
         logger.warning("Could not fetch bulk daily calories for user %s: %s", user_id, e)
 
+    # VO2max: fetch once from training_status (most recent estimate, not per-day)
+    vo2max_running: float | None = None
+    vo2max_cycling: float | None = None
+    try:
+        training_status = client.get_training_status(end_str)
+        vo2_data = (training_status or {}).get("mostRecentVO2Max") or {}
+        generic = vo2_data.get("generic") or {}
+        cycling = vo2_data.get("cycling") or {}
+        vo2max_running = _to_float(generic.get("vo2MaxPreciseValue") or generic.get("vo2MaxValue"))
+        vo2max_cycling = _to_float(cycling.get("vo2MaxPreciseValue") or cycling.get("vo2MaxValue"))
+    except Exception as e:
+        logger.warning("Could not fetch VO2max for user %s: %s", user_id, e)
+
     records: list[dict] = []
     current = start_date
     while current <= end_date:
@@ -507,6 +528,12 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
             row["steps"] = steps_by_date[date_str]
         if date_str in calories_by_date:
             row["daily_calories"] = calories_by_date[date_str]
+        # VO2max written to today's row only (most recent estimate)
+        if current == end_date:
+            if vo2max_running is not None:
+                row["vo2max_running"] = vo2max_running
+            if vo2max_cycling is not None:
+                row["vo2max_cycling"] = vo2max_cycling
 
         try:
             hrv_data = client.get_hrv_data(date_str)

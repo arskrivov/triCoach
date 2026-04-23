@@ -1,165 +1,222 @@
 /**
- * FitnessChart — CTL / ATL / TSB fitness timeline visualisation.
+ * FitnessChart — Fitness / Fatigue / Form performance management chart.
  *
- * Renders a 60-day line chart of the three core endurance training metrics:
- * - CTL (Chronic Training Load) — long-term fitness
- * - ATL (Acute Training Load) — short-term fatigue
- * - TSB (Training Stress Balance) — form (CTL − ATL)
+ * Renders a 60-day chart showing:
+ * - Fitness (CTL) — 42-day training load average, left axis
+ * - Fatigue (ATL) — 7-day training load average, left axis
+ * - Form (TSB) — Fitness minus Fatigue, right axis with coloured zones
+ * - Daily Load (TSS) — bar chart on right axis
  *
- * Suitable for use on any page that has access to a `FitnessPoint[]` array
- * from the `/fitness/timeline` or `/dashboard/overview` endpoints.
- *
- * @example
- * ```tsx
- * // Standalone card
- * <FitnessChart data={fitnessTimeline} />
- *
- * // Embedded inside another card (no extra shadow)
- * <FitnessChart data={fitnessTimeline} embedded />
- * ```
+ * Terminology follows TrainingPeaks PMC conventions but uses plain English labels.
  */
 
 "use client";
 
 import {
-  LineChart,
+  ComposedChart,
   Line,
-  XAxis,
+  Bar,
   YAxis,
+  XAxis,
   CartesianGrid,
   Tooltip,
-  ReferenceLine,
   ResponsiveContainer,
-  Label,
+  ReferenceLine,
+  ReferenceArea,
 } from "recharts";
 import type { FitnessPoint } from "@/lib/types";
 
-type TsbStatus = {
+type FormZone = {
   label: string;
   tone: string;
   description: string;
 };
 
-function getTsbStatus(tsb: number): TsbStatus {
+function getFormZone(tsb: number): FormZone {
   if (tsb > 10) {
     return {
       label: "Fresh",
       tone: "bg-emerald-50 text-emerald-700",
-      description: "Positive form. Good context for a race, taper, or key quality session.",
+      description: "Form is positive — good window for a race, key session, or taper.",
     };
   }
   if (tsb >= -10) {
     return {
       label: "Balanced",
       tone: "bg-sky-50 text-sky-700",
-      description: "Reasonably adapted to recent load. Usually fine for normal training.",
+      description: "Fitness and fatigue are in balance. Normal training is appropriate.",
     };
   }
   if (tsb >= -30) {
     return {
       label: "Productive load",
       tone: "bg-amber-50 text-amber-700",
-      description: "Training strain is elevated but still within a common build-zone range.",
+      description: "Fatigue is elevated but within a healthy build range.",
     };
   }
   return {
     label: "High fatigue",
     tone: "bg-rose-50 text-rose-700",
-    description: "Recent load is far above fitness. Recovery should drive the next decision.",
+    description: "Fatigue is far above fitness. Prioritise recovery before the next hard session.",
   };
 }
 
 export interface FitnessChartProps {
-  /** Array of fitness data points. Renders nothing if empty or undefined. */
   data?: FitnessPoint[];
-  /**
-   * When true, renders without a drop shadow (for embedding inside another card).
-   * Defaults to false.
-   */
   embedded?: boolean;
 }
 
 export function FitnessChart({ data: initialData, embedded = false }: FitnessChartProps) {
   const chartData = initialData ?? [];
-
   if (chartData.length === 0) return null;
 
   const visible = chartData.slice(-60);
   const latest = chartData[chartData.length - 1];
-  const latestStatus = getTsbStatus(latest.tsb);
+  const formZone = getFormZone(latest.tsb);
 
-  const allY = visible.flatMap((d) => [d.ctl, d.atl, d.tsb]);
-  const yMin = Math.floor(Math.min(...allY) - 5);
-  const yMax = Math.ceil(Math.max(...allY) + 5);
+  // Left axis: CTL + ATL range
+  const ctlAtlValues = visible.flatMap((d) => [d.ctl, d.atl]);
+  const leftMin = Math.max(0, Math.floor(Math.min(...ctlAtlValues) - 5));
+  const leftMax = Math.ceil(Math.max(...ctlAtlValues) + 10);
+
+  // Right axis: TSB + daily TSS — keep TSB visible around zero
+  const tsbValues = visible.map((d) => d.tsb);
+  const tssValues = visible.map((d) => d.daily_tss).filter((v) => v > 0);
+  const rightMin = Math.min(-40, Math.floor(Math.min(...tsbValues) - 5));
+  const rightMax = Math.max(20, Math.ceil(Math.max(...tssValues, ...tsbValues) + 10));
 
   const content = (
     <>
-      <div className="mb-1 flex items-center justify-between">
+      {/* Header */}
+      <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-900">Fitness &amp; Form</h2>
-        <div className="flex gap-4 text-xs text-zinc-400">
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-0.5 w-4 bg-indigo-500" /> CTL
+        <div className="flex flex-wrap gap-3 text-xs text-zinc-400">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-0.5 w-3 rounded bg-indigo-500" />
+            Fitness (CTL)
           </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-0.5 w-4 bg-amber-400" /> ATL
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-0.5 w-3 rounded bg-amber-400" />
+            Fatigue (ATL)
           </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-0.5 w-4 bg-emerald-500" /> TSB
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-0.5 w-3 rounded bg-emerald-500" />
+            Form (TSB)
           </span>
-        </div>
-      </div>
-      <div className="mb-4 grid gap-3">
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-100 bg-zinc-50 px-3 py-2 text-sm">
-          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${latestStatus.tone}`}>
-            {latestStatus.label}
-          </span>
-          <span className="text-zinc-600">
-            TSB {latest.tsb > 0 ? "+" : ""}
-            {latest.tsb.toFixed(1)}. {latestStatus.description}
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-sm bg-zinc-200" />
+            Daily load
           </span>
         </div>
       </div>
 
+      {/* Current form badge */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-100 bg-zinc-50 px-3 py-2 text-sm">
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${formZone.tone}`}>
+          {formZone.label}
+        </span>
+        <span className="text-zinc-600">
+          Form (TSB) {latest.tsb > 0 ? "+" : ""}
+          {latest.tsb.toFixed(1)} · Fitness {latest.ctl.toFixed(0)} · Fatigue {latest.atl.toFixed(0)}.{" "}
+          {formZone.description}
+        </span>
+      </div>
+
+      {/* Chart */}
       <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={visible} margin={{ top: 4, right: 20, left: -20, bottom: 0 }}>
+        <ComposedChart data={visible} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10 }}
+            tick={{ fontSize: 10, fill: "#a1a1aa" }}
             tickFormatter={(v: string) => v.slice(5)}
             interval={Math.floor(visible.length / 6)}
+            axisLine={false}
+            tickLine={false}
           />
-          <YAxis tick={{ fontSize: 10 }} domain={[yMin, yMax]} />
-          <ReferenceLine y={10} stroke="#10b981" strokeWidth={1.25} strokeDasharray="4 2">
-            <Label value="Fresh" position="insideRight" offset={4} fill="#047857" fontSize={10} />
-          </ReferenceLine>
-          <ReferenceLine y={0} stroke="#64748b" strokeWidth={1} strokeDasharray="4 2" />
-          <ReferenceLine y={-10} stroke="#0ea5e9" strokeWidth={1.25} strokeDasharray="4 2">
-            <Label value="Balanced" position="insideRight" offset={4} fill="#0369a1" fontSize={10} />
-          </ReferenceLine>
-          <ReferenceLine y={-30} stroke="#f97316" strokeWidth={1.25} strokeDasharray="4 2">
-            <Label value="Load / fatigue boundary" position="insideRight" offset={4} fill="#c2410c" fontSize={10} />
-          </ReferenceLine>
-          <Tooltip
-            contentStyle={{ fontSize: 12, borderRadius: 8 }}
-            formatter={(v, name) => [
-              typeof v === "number" ? v.toFixed(1) : String(v),
-              String(name).toUpperCase(),
-            ]}
-            labelFormatter={(l) => String(l)}
+          {/* Left axis: Fitness (CTL) + Fatigue (ATL) */}
+          <YAxis
+            yAxisId="load"
+            domain={[leftMin, leftMax]}
+            tick={{ fontSize: 10, fill: "#a1a1aa" }}
+            axisLine={false}
+            tickLine={false}
+            width={28}
           />
-          <Line type="monotone" dataKey="ctl" name="ctl" stroke="#6366f1" dot={false} strokeWidth={2} />
-          <Line type="monotone" dataKey="atl" name="atl" stroke="#f97316" dot={false} strokeWidth={2} />
+          {/* Right axis: Form (TSB) + Daily load (TSS) */}
+          <YAxis
+            yAxisId="form"
+            orientation="right"
+            domain={[rightMin, rightMax]}
+            tick={{ fontSize: 10, fill: "#a1a1aa" }}
+            axisLine={false}
+            tickLine={false}
+            width={28}
+          />
+
+          {/* TSB zone backgrounds on right axis */}
+          <ReferenceArea yAxisId="form" y1={10} y2={rightMax} fill="#d1fae5" fillOpacity={0.25} />
+          <ReferenceArea yAxisId="form" y1={-10} y2={10} fill="#e0f2fe" fillOpacity={0.25} />
+          <ReferenceArea yAxisId="form" y1={-30} y2={-10} fill="#fef3c7" fillOpacity={0.3} />
+          <ReferenceArea yAxisId="form" y1={rightMin} y2={-30} fill="#fee2e2" fillOpacity={0.3} />
+
+          {/* Zero line for TSB */}
+          <ReferenceLine yAxisId="form" y={0} stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 2" />
+
+          {/* Daily load bars (background) */}
+          <Bar
+            yAxisId="form"
+            dataKey="daily_tss"
+            fill="#e4e4e7"
+            radius={[2, 2, 0, 0]}
+            maxBarSize={8}
+            name="Daily load"
+          />
+
+          {/* Fitness (CTL) */}
           <Line
+            yAxisId="load"
+            type="monotone"
+            dataKey="ctl"
+            stroke="#6366f1"
+            strokeWidth={2.5}
+            dot={false}
+            activeDot={{ r: 4 }}
+            name="Fitness (CTL)"
+          />
+          {/* Fatigue (ATL) */}
+          <Line
+            yAxisId="load"
+            type="monotone"
+            dataKey="atl"
+            stroke="#f59e0b"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4 }}
+            name="Fatigue (ATL)"
+          />
+          {/* Form (TSB) */}
+          <Line
+            yAxisId="form"
             type="monotone"
             dataKey="tsb"
-            name="tsb"
             stroke="#10b981"
-            dot={false}
             strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4 }}
             strokeDasharray="5 3"
+            name="Form (TSB)"
           />
-        </LineChart>
+
+          <Tooltip
+            contentStyle={{ fontSize: 11, borderRadius: 8, padding: "6px 10px" }}
+            labelFormatter={(l) => String(l)}
+            formatter={(value, name) => {
+              const v = typeof value === "number" ? value.toFixed(1) : "—";
+              return [v, String(name)];
+            }}
+          />
+        </ComposedChart>
       </ResponsiveContainer>
     </>
   );
@@ -167,6 +224,5 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
   if (embedded) {
     return <div className="rounded-2xl border border-zinc-100 bg-white p-4">{content}</div>;
   }
-
   return <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">{content}</div>;
 }

@@ -376,28 +376,31 @@ async def _generate_briefing(
         response = client.responses.create(
             model=settings.openai_analysis_model,
             instructions=(
-                "You are an elite sleep scientist and endurance coach — think Whoop + Oura combined. "
-                "You have 7 days of an athlete's biometric data: sleep score, HRV, resting HR, readiness, "
-                "body battery, stress, SpO2, respiration, steps, daily calories, and training load (TSS by discipline). "
+                "You are an elite endurance coach and exercise physiologist — think TrainingPeaks + Whoop combined. "
+                "You have 7 days of an athlete's training data: sessions by discipline (swim/bike/run/strength/mobility), "
+                "TSS (Training Stress Score), distance, duration, calories burned per session, avg HR, "
+                "plus fitness metrics: Fitness (CTL = 42-day training load average), "
+                "Fatigue (ATL = 7-day training load average), Form (TSB = Fitness minus Fatigue), "
+                "and VO2max estimates for running and cycling. "
+                "You also have daily recovery context: HRV, resting HR, sleep score, readiness, stress, steps, calories. "
                 "\n\n"
                 "ANALYSIS RULES:\n"
                 "- Weight the last 3 days heavily, especially yesterday, as the primary signal.\n"
-                "- Use the 7-day window as context for trends and baselines.\n"
-                "- Connect dots across metrics: e.g. high calories + low HRV next morning, "
-                "hard training day + elevated resting HR, low steps + poor sleep.\n"
-                "- Be specific — cite actual numbers from the data, not generic advice.\n"
-                "- Sound like a coach who knows this athlete, not a chatbot.\n"
+                "- Use plain English for metrics: say 'fitness level (CTL)' not just 'CTL', "
+                "'fatigue (ATL)' not just 'ATL', 'form (TSB)' not just 'TSB'.\n"
+                "- Connect training to recovery: e.g. 'yesterday's 85 TSS ride likely explains today's elevated resting HR'.\n"
+                "- Reference VO2max when relevant: e.g. 'your running VO2max of 54 suggests you can handle more aerobic volume'.\n"
+                "- Be specific — cite actual numbers. Sound like a coach who knows this athlete.\n"
                 "- Avoid filler phrases like 'great job', 'it is important to', 'make sure to'.\n"
                 "\n\n"
                 "OUTPUT: Return JSON only with exactly these keys:\n"
-                "sleep_analysis: 2-3 sentences. Lead with what last night's data shows and why "
-                "(connect to prior day's activity/calories/stress). Then note the 7-day trend.\n"
-                "activity_analysis: 2-3 sentences on training load, fitness direction (CTL/ATL/TSB), "
-                "and how recovery is tracking against training demand.\n"
+                "sleep_analysis: 2-3 sentences on last night's recovery and how it connects to recent training load.\n"
+                "activity_analysis: 2-3 sentences on training load trend, fitness/fatigue/form direction, "
+                "and what it means for the next 2-3 days. Use plain English for CTL/ATL/TSB.\n"
                 "recommendations: list of exactly 3 specific, actionable items. Each must reference "
-                "a metric from the data. No generic wellness advice.\n"
-                "caution: single sentence if a metric combination warrants attention (e.g. HRV + "
-                "readiness both declining while load is rising), otherwise null.\n"
+                "a metric from the data. No generic advice.\n"
+                "caution: single sentence if a metric combination warrants attention "
+                "(e.g. TSB dropping below -30 while readiness is low), otherwise null.\n"
                 "\n"
                 "No markdown. No prose outside JSON. Numbers only from the provided data."
             ),
@@ -573,6 +576,7 @@ def _aggregate_activity_data(
     latest_fitness: dict[str, Any] | None,
     planned_summary_dict: dict[str, Any],
     readiness: float | None,
+    latest_health: DailyHealthRow | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Aggregate activity metrics, discipline breakdown, and fitness data.
 
@@ -643,6 +647,8 @@ def _aggregate_activity_data(
             "atl": latest_fitness.get("atl") if latest_fitness else None,
             "tsb": latest_fitness.get("tsb") if latest_fitness else None,
             "direction": _load_direction(latest_fitness),
+            "vo2max_running": latest_health.vo2max_running if latest_health else None,
+            "vo2max_cycling": latest_health.vo2max_cycling if latest_health else None,
         },
         "planned": planned_summary_dict,
     }
@@ -735,6 +741,7 @@ async def build_dashboard_overview(
         latest_fitness,
         planned_summary_dict,
         readiness,
+        latest_health=latest_health,
     )
 
     overview = {

@@ -47,6 +47,10 @@ class ActivityRow(BaseModel):
     total_sets: int | None = None
     # Yoga/Mobility
     session_type: str | None = None
+    # Training effect (aerobic/anaerobic, 0–5 scale)
+    aerobic_training_effect: float | None = None
+    anaerobic_training_effect: float | None = None
+    training_effect_label: str | None = None
 
 
 class DailyHealthRow(BaseModel):
@@ -69,6 +73,8 @@ class DailyHealthRow(BaseModel):
     respiration_avg: float | None = None
     spo2_avg: float | None = None
     morning_readiness_score: int | None = None
+    vo2max_running: float | None = None
+    vo2max_cycling: float | None = None
 
 
 class DailyBriefingRow(BaseModel):

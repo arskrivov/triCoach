@@ -174,6 +174,8 @@ async def test_dashboard_overview_structure_with_data():
     assert "metrics" in recovery
     assert "sparkline" in recovery
     assert len(recovery["sparkline"]) == 30  # Always 30 days
+    assert all(metric["key"] != "body_battery_high" for metric in recovery["metrics"])
+    assert all("body_battery" not in point for point in recovery["sparkline"])
 
     # Activity structure
     activity_data = result["activity"]

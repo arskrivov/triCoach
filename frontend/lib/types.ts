@@ -24,6 +24,9 @@ export interface ActivitySummary {
   tss: number | null;
   total_sets: number | null;
   session_type: string | null;
+  aerobic_training_effect: number | null;
+  anaerobic_training_effect: number | null;
+  training_effect_label: string | null;
 }
 
 export interface ActivityDetail extends ActivitySummary {
@@ -98,6 +101,8 @@ export interface DisciplineSummary {
   sessions: number;
   distance_km: number;
   duration_hours: number;
+  avg_calories: number | null;
+  avg_hr: number | null;
 }
 
 export interface ActivityWindowSummary {
@@ -158,6 +163,8 @@ export interface ActivityOverview {
     atl: number | null;
     tsb: number | null;
     direction: "unknown" | "fatigued" | "training" | "fresh" | "balanced";
+    vo2max_running: number | null;
+    vo2max_cycling: number | null;
   };
   planned: PlannedSummary;
 }

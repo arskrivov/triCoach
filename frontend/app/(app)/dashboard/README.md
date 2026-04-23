@@ -8,7 +8,7 @@ The dashboard is the primary landing page of Personal Coach. It aggregates recov
 |---|---|---|
 | `DashboardContent` | `dashboard-content.tsx` | Client orchestrator — manages API calls, Garmin sync events, and state |
 | `CoachBriefingCard` | `coach-briefing-card.tsx` | Daily AI or heuristic coaching briefing (sleep, activity, recommendations) |
-| `RecoveryOverviewCard` | `recovery-overview-card.tsx` | 9 recovery metrics with 7d/30d trends and 30-day sparklines |
+| `RecoveryOverviewCard` | `recovery-overview-card.tsx` | 8 recovery metrics with 7d/30d trends and 30-day sparklines |
 | `ActivityOverviewCard` | `activity-overview-card.tsx` | Activity summaries by discipline, fitness chart (CTL/ATL/TSB) |
 | `RecentActivitiesCard` | `recent-activities-card.tsx` | Last 6 activities with links to detail views |
 | `UpcomingWorkoutsCard` | `upcoming-workouts-card.tsx` | Next 6 scheduled workouts |

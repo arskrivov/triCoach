@@ -5,11 +5,15 @@ import type { RecoveryOverview, HealthSparklinePoint } from "@/lib/types";
 
 // Recharts uses ResizeObserver which is not available in jsdom
 vi.mock("recharts", () => ({
+  ComposedChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   LineChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   Line: () => null,
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   Tooltip: () => null,
   XAxis: () => null,
+  YAxis: () => null,
+  CartesianGrid: () => null,
+  ReferenceLine: () => null,
 }));
 
 // Mock MetricTile to avoid complex rendering in unit tests
