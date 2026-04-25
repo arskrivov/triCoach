@@ -195,4 +195,78 @@ export interface AthleteProfile {
   bench_1rm_kg: number | null;
   overhead_press_1rm_kg: number | null;
   mobility_sessions_per_week_target: number;
+  weekly_training_hours: number | null;
+  field_sources: Record<string, "manual" | "garmin" | "default">;
+  garmin_values: Record<string, number | null>;
+}
+
+// --- Goals (enhanced for plan generation) ---
+
+export interface Goal {
+  id: string;
+  description: string;
+  target_date: string | null;
+  is_active: boolean;
+  sport: string | null;
+  weekly_volume_km: number | null;
+  race_type: string | null;
+  weekly_hours_budget: number | null;
+  priority: number;
+}
+
+// --- Training Plans ---
+
+export interface PlanPhase {
+  name: string;
+  weeks: number[];
+  focus: string;
+  weekly_tss_range: number[];
+}
+
+export interface PlanStructure {
+  total_weeks: number;
+  phases: PlanPhase[];
+  weekly_hours_distribution: Record<string, number>;
+  recovery_week_pattern: number[];
+}
+
+export interface PlanAdjustment {
+  date: string;
+  reason: string;
+  changes: string;
+}
+
+export interface TrainingPlan {
+  id: string;
+  user_id: string;
+  goal_id: string | null;
+  name: string;
+  status: "active" | "completed" | "archived";
+  race_date: string | null;
+  start_date: string;
+  end_date: string;
+  weekly_hours: number;
+  plan_structure: PlanStructure;
+  adjustments: PlanAdjustment[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlanWorkout extends PlannedWorkout {
+  plan_week: number | null;
+  plan_day: number | null;
+}
+
+export interface WeekCompliance {
+  week_number: number;
+  target_tss: number;
+  actual_tss: number;
+  compliance_percentage: number;
+  completed_workouts: number;
+  total_workouts: number;
+}
+
+export interface PlanCompliance {
+  overall_percentage: number;
+  weeks: WeekCompliance[];
 }

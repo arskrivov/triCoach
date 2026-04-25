@@ -14,7 +14,7 @@ PROFILE_FIELDS = (
     "ftp_watts", "threshold_pace_sec_per_km", "swim_css_sec_per_100m",
     "max_hr", "resting_hr", "weight_kg",
     "squat_1rm_kg", "deadlift_1rm_kg", "bench_1rm_kg", "overhead_press_1rm_kg",
-    "mobility_sessions_per_week_target",
+    "mobility_sessions_per_week_target", "weekly_training_hours",
 )
 
 
@@ -30,7 +30,9 @@ class EffectiveAthleteProfile(BaseModel):
     bench_1rm_kg: float | None = None
     overhead_press_1rm_kg: float | None = None
     mobility_sessions_per_week_target: int = DEFAULT_MOBILITY_TARGET
+    weekly_training_hours: float | None = None
     field_sources: dict[str, str] = Field(default_factory=dict)
+    garmin_values: dict[str, float | int | None] = Field(default_factory=dict)
 
 
 def _round_optional(value: float | None, digits: int = 1) -> float | None:
@@ -149,6 +151,46 @@ def _derive_strength_1rms(activities: list[ActivityRow]) -> dict[str, float | No
     return estimates
 
 
+def merge_profile_fields(
+    manual: AthleteProfileRow | None,
+    derived_values: dict[str, int | float | None],
+    profile_fields: tuple[str, ...] = PROFILE_FIELDS,
+    default_mobility_target: int = DEFAULT_MOBILITY_TARGET,
+) -> tuple[dict[str, int | float | None], dict[str, str], dict[str, int | float | None]]:
+    """Merge manual, Garmin-derived, and default values.
+
+    Returns:
+        (effective_values, field_sources, garmin_values)
+    """
+    effective_values: dict[str, int | float | None] = {}
+    field_sources: dict[str, str] = {}
+    garmin_values: dict[str, int | float | None] = {}
+
+    for field_name in profile_fields:
+        manual_value = getattr(manual, field_name) if manual else None
+        derived = derived_values.get(field_name)
+
+        # garmin_values always contains the derived value regardless of overrides
+        garmin_values[field_name] = derived
+
+        if field_name == "mobility_sessions_per_week_target":
+            effective_values[field_name] = manual_value if manual_value is not None else default_mobility_target
+            field_sources[field_name] = "manual" if manual_value is not None else "default"
+            continue
+
+        if manual_value is not None:
+            effective_values[field_name] = manual_value
+            field_sources[field_name] = "manual"
+        elif derived is not None:
+            effective_values[field_name] = derived
+            field_sources[field_name] = "garmin"
+        else:
+            effective_values[field_name] = None
+            field_sources[field_name] = "default"
+
+    return effective_values, field_sources, garmin_values
+
+
 async def get_manual_athlete_profile(user_id: str, sb: AsyncClient) -> AthleteProfileRow | None:
     res = await sb.table("athlete_profile").select("*").eq("user_id", user_id).limit(1).execute()
     return AthleteProfileRow(**res.data[0]) if res.data else None
@@ -177,20 +219,6 @@ async def get_effective_athlete_profile(user_id: str, sb: AsyncClient) -> Effect
         **derived_strength,
     }
 
-    values: dict[str, int | float | None] = {}
-    field_sources: dict[str, str] = {}
-    for field_name in PROFILE_FIELDS:
-        manual_value = getattr(manual, field_name) if manual else None
-        if field_name == "mobility_sessions_per_week_target":
-            values[field_name] = manual_value if manual_value is not None else DEFAULT_MOBILITY_TARGET
-            field_sources[field_name] = "manual" if manual_value is not None else "default"
-            continue
-        if manual_value is not None:
-            values[field_name] = manual_value
-            field_sources[field_name] = "manual"
-            continue
-        derived = derived_values.get(field_name)
-        values[field_name] = derived
-        field_sources[field_name] = "garmin" if derived is not None else "default"
+    values, field_sources, garmin_values = merge_profile_fields(manual, derived_values)
 
-    return EffectiveAthleteProfile(**values, field_sources=field_sources)
+    return EffectiveAthleteProfile(**values, field_sources=field_sources, garmin_values=garmin_values)

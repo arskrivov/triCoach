@@ -9,13 +9,14 @@ import {
   dispatchGarminSyncFailed,
   dispatchGarminSyncStarted,
 } from "@/lib/garmin-sync";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/workouts", label: "Workouts", icon: "🏋️" },
   { href: "/routes", label: "Routes", icon: "🗺️" },
   { href: "/coach", label: "AI Coach", icon: "🤖" },
-  { href: "/settings", label: "Settings", icon: "⚙️" },
+  { href: "/account", label: "Account", icon: "⚙️" },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -105,7 +106,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="border-t p-3">
+        <div className="border-t p-3 flex flex-col gap-1">
+          <ThemeToggle />
           <button
             onClick={triggerSync}
             disabled={syncing}
