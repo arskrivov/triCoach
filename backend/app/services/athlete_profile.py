@@ -154,14 +154,42 @@ def _derive_strength_1rms(activities: list[ActivityRow]) -> dict[str, float | No
     return estimates
 
 
+def _estimate_ftp_from_vo2max(vo2max_cycling: float, weight_kg: float) -> int | None:
+    """Estimate cycling FTP from VO2max using empirical formula.
+    
+    Formula: FTP (W/kg) ≈ (VO2max - 10.8) / 12.5
+    This is based on the relationship between VO2max and sustainable power output.
+    
+    Args:
+        vo2max_cycling: Cycling VO2max in ml/kg/min
+        weight_kg: Body weight in kg
+    
+    Returns:
+        Estimated FTP in watts, or None if inputs are invalid
+    """
+    if not vo2max_cycling or not weight_kg:
+        return None
+    if vo2max_cycling < 20 or vo2max_cycling > 90:  # Reasonable VO2max range
+        return None
+    if weight_kg < 30 or weight_kg > 200:
+        return None
+    
+    ftp_wkg = (vo2max_cycling - 10.8) / 12.5
+    if ftp_wkg < 1.0 or ftp_wkg > 7.0:  # Reasonable W/kg range
+        return None
+    
+    return int(round(ftp_wkg * weight_kg))
+
+
 async def _fetch_garmin_profile_values(user_id: str, sb: AsyncClient) -> dict[str, int | float | None]:
     """Fetch athlete profile values directly from Garmin user settings.
     
     This fetches:
     - max_hr, resting_hr from /biometric-service/heartRateZones
     - threshold_pace_sec_per_km from /biometric-service/lactateThreshold (speed field)
-    - ftp_watts from /biometric-service/lactateThreshold (cycling FTP if available)
-    - weight_kg from /biometric-service/lactateThreshold (weight field)
+    - ftp_watts from /biometric-service/lactateThreshold (cycling FTP if available),
+      or estimated from VO2max cycling if no direct FTP is available
+    - weight_kg from user profile or lactate threshold
     
     Returns a dict with Garmin profile values, or empty dict if Garmin is not connected.
     """
@@ -173,6 +201,23 @@ async def _fetch_garmin_profile_values(user_id: str, sb: AsyncClient) -> dict[st
         return {}
     
     values: dict[str, int | float | None] = {}
+    vo2max_cycling: float | None = None
+    weight_kg: float | None = None
+    
+    # Fetch user profile for VO2max and weight
+    try:
+        profile = client.get_user_profile()
+        user_data = profile.get('userData', {}) if profile else {}
+        
+        vo2max_cycling = user_data.get('vo2MaxCycling')
+        
+        # Weight is stored in grams in user profile
+        weight_g = user_data.get('weight')
+        if weight_g and 30000 <= weight_g <= 200000:
+            weight_kg = weight_g / 1000
+            values['weight_kg'] = round(weight_kg, 1)
+    except Exception as e:
+        logger.debug("Could not fetch user profile from Garmin for user %s: %s", user_id, e)
     
     # Fetch HR zones for max_hr and resting_hr
     try:
@@ -188,12 +233,13 @@ async def _fetch_garmin_profile_values(user_id: str, sb: AsyncClient) -> dict[st
     except Exception as e:
         logger.debug("Could not fetch HR zones from Garmin for user %s: %s", user_id, e)
     
-    # Fetch lactate threshold for threshold pace, FTP, and weight
+    # Fetch lactate threshold for threshold pace and potentially FTP
+    cycling_ftp_found = False
     try:
         lt = client.get_lactate_threshold()
         if lt:
             # Threshold pace from speed field
-            # Note: Garmin returns speed in a scaled format (divide by 10 to get m/s)
+            # Note: Garmin returns speed in a scaled format (multiply by 10 to get m/s)
             speed_hr = lt.get('speed_and_heart_rate') or {}
             speed_raw = speed_hr.get('speed')
             if speed_raw and speed_raw > 0:
@@ -208,17 +254,29 @@ async def _fetch_garmin_profile_values(user_id: str, sb: AsyncClient) -> dict[st
             power_data = lt.get('power') or {}
             sport = power_data.get('sport', '').upper()
             ftp = power_data.get('functionalThresholdPower')
-            weight = power_data.get('weight')
+            lt_weight = power_data.get('weight')
             
             # Only use FTP if it's for cycling (not running power)
             if ftp and sport == 'CYCLING' and 50 <= ftp <= 500:
                 values['ftp_watts'] = int(ftp)
+                cycling_ftp_found = True
             
-            # Weight in kg
-            if weight and 30 <= weight <= 200:
-                values['weight_kg'] = round(float(weight), 1)
+            # Use weight from lactate threshold if not already set
+            if lt_weight and 30 <= lt_weight <= 200 and 'weight_kg' not in values:
+                weight_kg = float(lt_weight)
+                values['weight_kg'] = round(weight_kg, 1)
     except Exception as e:
         logger.debug("Could not fetch lactate threshold from Garmin for user %s: %s", user_id, e)
+    
+    # If no cycling FTP found, estimate from VO2max
+    if not cycling_ftp_found and vo2max_cycling and weight_kg:
+        estimated_ftp = _estimate_ftp_from_vo2max(vo2max_cycling, weight_kg)
+        if estimated_ftp:
+            values['ftp_watts'] = estimated_ftp
+            logger.debug(
+                "Estimated cycling FTP for user %s: %dW (from VO2max=%.1f, weight=%.1fkg)",
+                user_id, estimated_ftp, vo2max_cycling, weight_kg
+            )
     
     return values
 
