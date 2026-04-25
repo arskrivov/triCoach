@@ -4,7 +4,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from supabase import AsyncClient
 
-from app.models import ActivityRow, DailyHealthRow, GoalRow
+from app.models import ActivityRow, DailyHealthRow, GoalRow, TrainingPlanRow, WorkoutRow
 from app.services.athlete_profile import get_effective_athlete_profile
 
 
@@ -28,6 +28,106 @@ def _fmt_dur(seconds: int | None) -> str:
     h, rem = divmod(seconds, 3600)
     m = rem // 60
     return f"{h}h {m}min" if h else f"{m} min"
+
+
+def _day_name(day_num: int) -> str:
+    """Convert day number (0=Monday) to name."""
+    names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    return names[day_num] if 0 <= day_num <= 6 else f"Day {day_num}"
+
+
+async def _build_active_plan_section(user_id: str, sb: AsyncClient, today: date) -> str | None:
+    """Build context section for the user's active training plan, if one exists.
+
+    Returns formatted text or None if no active plan.
+    """
+    plan_res = await sb.table("training_plans").select("*").eq(
+        "user_id", user_id
+    ).eq("status", "active").limit(1).execute()
+
+    if not plan_res.data:
+        return None
+
+    plan = TrainingPlanRow(**plan_res.data[0])
+
+    # Calculate current week number
+    plan_start = date.fromisoformat(str(plan.start_date))
+    days_elapsed = (today - plan_start).days
+    current_week = max(1, (days_elapsed // 7) + 1)
+
+    # Determine total weeks and current phase from plan_structure
+    plan_structure = plan.plan_structure or {}
+    total_weeks = plan_structure.get("total_weeks", 0)
+    if not total_weeks and plan.end_date:
+        plan_end = date.fromisoformat(str(plan.end_date))
+        total_weeks = max(1, ((plan_end - plan_start).days // 7) + 1)
+
+    current_phase = "Unknown"
+    phases = plan_structure.get("phases", [])
+    for phase in phases:
+        if isinstance(phase, dict):
+            phase_weeks = phase.get("weeks", [])
+            if current_week in phase_weeks:
+                current_phase = phase.get("name", "Unknown")
+                break
+
+    # Fetch this week's workouts
+    workouts_res = await sb.table("workouts").select("*").eq(
+        "plan_id", plan.id
+    ).eq("user_id", user_id).eq(
+        "plan_week", current_week
+    ).order("plan_day", desc=False).execute()
+    workouts = [WorkoutRow(**w) for w in (workouts_res.data or [])]
+
+    # Calculate simple compliance: completed vs total scheduled workouts up to today
+    today_weekday = today.weekday()
+
+    # Calculate this week's date range (Mon–Sun)
+    week_start = plan_start + timedelta(weeks=current_week - 1)
+    week_end = week_start + timedelta(days=6)
+
+    # Build the section
+    lines = ["## Active Training Plan"]
+    lines.append(f"- Plan ID: {plan.id}")
+    lines.append(f"- Plan: {plan.name}")
+    lines.append(f"- Phase: {current_phase} (Week {current_week}/{total_weeks})")
+    lines.append(f"- Weekly hours budget: {plan.weekly_hours}h")
+    lines.append(f"- Current week number: {current_week}")
+    lines.append(f"- Today: {today.isoformat()} ({_day_name(today_weekday)})")
+    lines.append(f"- This week: {week_start.isoformat()} (Mon) to {week_end.isoformat()} (Sun)")
+    lines.append("- When the athlete says 'this week' they mean the dates above.")
+
+    if workouts:
+        lines.append("")
+        lines.append("### This Week's Workouts")
+        lines.append("Use the workout_id (UUID) when calling tools to modify workouts.")
+        for w in workouts:
+            day_num = w.plan_day if w.plan_day is not None else 0
+            day = _day_name(day_num)
+            dur_min = (w.estimated_duration_seconds or 0) // 60
+            tss = f"TSS:{w.estimated_tss:.0f}" if w.estimated_tss else ""
+
+            # Determine status based on scheduled_date or plan_day
+            if w.scheduled_date:
+                sched = date.fromisoformat(str(w.scheduled_date))
+                if sched < today:
+                    status = "completed"
+                else:
+                    status = "upcoming"
+            else:
+                status = "completed" if day_num < today_weekday else "upcoming"
+
+            lines.append(
+                f"- {day}: {w.discipline} — {w.name} ({dur_min}min, {tss}) "
+                f"[{status}] [workout_id: {w.id}] [scheduled: {w.scheduled_date or 'N/A'}] "
+                f"[plan_day: {day_num}]"
+            )
+    else:
+        lines.append("")
+        lines.append("### This Week's Workouts")
+        lines.append("- No workouts scheduled this week.")
+
+    return "\n".join(lines)
 
 
 async def build_context_text(user_id: str, sb: AsyncClient) -> str:
@@ -170,6 +270,9 @@ async def build_context_text(user_id: str, sb: AsyncClient) -> str:
         f"- Muscle groups trained (last 14 days): {', '.join(mg_last14.keys()) or 'none'}",
     ]
 
+    # Active training plan section
+    plan_section = await _build_active_plan_section(user_id, sb, today)
+
     sections = [
         "You are an expert personal coach specialising in triathlon (swim/bike/run), strength training, and yoga/mobility. "
         "You have full access to the athlete's training history, health metrics, and goals. "
@@ -183,4 +286,6 @@ async def build_context_text(user_id: str, sb: AsyncClient) -> str:
         "\n".join(health_lines),
         "\n".join(flags_lines),
     ]
+    if plan_section:
+        sections.append(plan_section)
     return "\n\n".join(sections)

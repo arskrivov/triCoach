@@ -104,7 +104,7 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
             Form (TSB)
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: "oklch(1 0 0 / 10%)" }} />
+            <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: "oklch(0.70 0.12 265 / 40%)" }} />
             Daily load
           </span>
         </div>
@@ -168,7 +168,7 @@ export function FitnessChart({ data: initialData, embedded = false }: FitnessCha
           <Bar
             yAxisId="form"
             dataKey="daily_tss"
-            fill="oklch(1 0 0 / 10%)"
+            fill="oklch(0.70 0.12 265 / 40%)"
             radius={[2, 2, 0, 0]}
             maxBarSize={8}
             name="Daily load"

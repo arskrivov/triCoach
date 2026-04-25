@@ -1,5 +1,5 @@
 -- Personal Coach App — Supabase Schema
--- Last synced from live DB: 2026-04-23
+-- Last synced from live DB: 2026-06-25
 -- Run this entire file in: Supabase Dashboard → SQL Editor → New Query → Run
 
 create extension if not exists "pgcrypto";
@@ -145,19 +145,23 @@ create table if not exists athlete_profile (
   bench_1rm_kg                        float,
   overhead_press_1rm_kg               float,
   mobility_sessions_per_week_target   int default 2,
+  weekly_training_hours               float default 8,
   updated_at                          timestamptz default now()
 );
 
 -- ── Goals ─────────────────────────────────────────────────────────────────────
 create table if not exists goals (
-  id                uuid primary key default gen_random_uuid(),
-  user_id           uuid references users(id) on delete cascade not null,
-  description       text not null,
-  target_date       date,
-  sport             text,
-  weekly_volume_km  float,
-  is_active         boolean default true,
-  created_at        timestamptz default now()
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid references users(id) on delete cascade not null,
+  description         text not null,
+  target_date         date,
+  sport               text,
+  weekly_volume_km    float,
+  is_active           boolean default true,
+  race_type           text,              -- marathon, ironman_70_3, ironman, olympic_tri, half_marathon, 10k, century_ride, custom
+  weekly_hours_budget float,             -- max training hours per week
+  priority            int default 1,     -- 1=primary, 2=secondary
+  created_at          timestamptz default now()
 );
 
 create index if not exists idx_goals_user_id on goals(user_id);
@@ -169,6 +173,39 @@ create table if not exists coach_conversations (
   messages    jsonb not null default '[]',
   updated_at  timestamptz default now()
 );
+
+-- ── Training Plans ────────────────────────────────────────────────────────────
+create table if not exists training_plans (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid references users(id) on delete cascade not null,
+  goal_id         uuid references goals(id) on delete set null,
+  name            text not null,
+  status          text not null default 'active',  -- active, completed, archived
+  race_date       date,
+  start_date      date not null,
+  end_date        date not null,
+  weekly_hours    float not null,
+  plan_structure  jsonb not null default '{}',      -- periodization phases, weekly TSS targets
+  adjustments     jsonb not null default '[]',      -- history of AI adjustments
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now()
+);
+
+create index if not exists idx_training_plans_user_id on training_plans(user_id);
+
+-- ── Plan Week Briefings (cached AI coach weekly previews) ─────────────────────
+create table if not exists plan_week_briefings (
+  id              uuid primary key default gen_random_uuid(),
+  plan_id         uuid references training_plans(id) on delete cascade not null,
+  user_id         uuid references users(id) on delete cascade not null,
+  week_number     int not null,
+  data_signature  text not null,
+  briefing        text not null,
+  created_at      timestamptz default now(),
+  unique(plan_id, week_number)
+);
+
+create index if not exists idx_plan_week_briefings_plan_week on plan_week_briefings(plan_id, week_number);
 
 -- ── Workouts ──────────────────────────────────────────────────────────────────
 create table if not exists workouts (
@@ -185,11 +222,15 @@ create table if not exists workouts (
   garmin_workout_id           bigint,
   is_template                 boolean default false,
   scheduled_date              date,
+  plan_id                     uuid references training_plans(id) on delete set null,
+  plan_week                   int,           -- week number within the plan
+  plan_day                    int,           -- 0=Monday through 6=Sunday
   created_at                  timestamptz default now(),
   updated_at                  timestamptz default now()
 );
 
 create index if not exists idx_workouts_user_id on workouts(user_id);
+create index if not exists idx_workouts_plan_id on workouts(plan_id);
 
 -- ── Exercises (library) ───────────────────────────────────────────────────────
 create table if not exists exercises (

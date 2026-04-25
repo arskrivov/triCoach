@@ -16,21 +16,10 @@ interface Message {
   content: string;
 }
 
-interface Goal {
-  id: string;
-  description: string;
-  target_date: string | null;
-  is_active: boolean;
-}
-
 export default function CoachPage() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [newGoal, setNewGoal] = useState("");
-  const [addingGoal, setAddingGoal] = useState(false);
-  const [goalsOpen, setGoalsOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -40,15 +29,6 @@ export default function CoachPage() {
       setMessages(res.data);
     } catch {
       // empty history is fine
-    }
-  }
-
-  async function loadGoals() {
-    try {
-      const res = await api.get<Goal[]>("/coach/goals");
-      setGoals(res.data);
-    } catch {
-      // ignore
     }
   }
 
@@ -149,23 +129,6 @@ export default function CoachPage() {
     setMessages([]);
   }
 
-  async function addGoal() {
-    if (!newGoal.trim()) return;
-    setAddingGoal(true);
-    try {
-      const res = await api.post<Goal>("/coach/goals", { description: newGoal.trim() });
-      setGoals((prev) => [res.data, ...prev]);
-      setNewGoal("");
-    } finally {
-      setAddingGoal(false);
-    }
-  }
-
-  async function deleteGoal(id: string) {
-    await api.delete(`/coach/goals/${id}`);
-    setGoals((prev) => prev.filter((g) => g.id !== id));
-  }
-
   function handleKey(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -174,159 +137,108 @@ export default function CoachPage() {
   }
 
   useEffect(() => {
-    queueMicrotask(() => {
-      void loadHistory();
-      void loadGoals();
-    });
+    queueMicrotask(() => void loadHistory());
   }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Mobile goals backdrop */}
-      <div
-        className={`fixed inset-0 z-40 bg-black/40 transition-opacity lg:hidden ${goalsOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
-        onClick={() => setGoalsOpen(false)}
-      />
-
-      {/* Goals sidebar — persistent on desktop, slide-out overlay on mobile */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-card border-r border-border transition-transform duration-200 lg:relative lg:z-auto lg:translate-x-0 lg:shrink-0 ${goalsOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="p-4 border-b flex items-center justify-between">
-          <h2 className="font-semibold text-sm">Goals</h2>
-          <button
-            type="button"
-            onClick={() => setGoalsOpen(false)}
-            className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    <div className="flex flex-col h-screen overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-3 border-b bg-card">
+        <div>
+          <h1 className="font-semibold text-foreground">AI Coach</h1>
+          <p className="text-xs text-muted-foreground">
+            Powered by ChatGPT · can adjust your training plan
+          </p>
+        </div>
+        {messages.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearHistory}
+            className="text-muted-foreground hover:text-foreground"
           >
-            Close
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-          {goals.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-4">No goals yet. Add one below.</p>
-          )}
-          {goals.map((g) => (
-            <div key={g.id} className="p-2.5 border border-border rounded-lg group">
-              <div className="flex items-start justify-between gap-1">
-                <p className="text-sm font-medium leading-tight flex-1">{g.description}</p>
-                <button onClick={() => deleteGoal(g.id)}
-                  className="text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 text-base leading-none shrink-0">
-                  ×
-                </button>
-              </div>
-              <span className={`mt-1 inline-block text-xs px-1.5 py-0.5 rounded-full font-medium ${g.is_active ? "bg-[--status-positive]/15 text-[--status-positive]" : "bg-muted text-muted-foreground"}`}>
-                {g.is_active ? "active" : "done"}
-              </span>
-              {g.target_date && (
-                <p className="text-xs text-muted-foreground mt-0.5">by {g.target_date}</p>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="p-3 border-t flex gap-2">
-          <Input
-            value={newGoal}
-            onChange={(e) => setNewGoal(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addGoal()}
-            placeholder="Add a goal…"
-            className="text-sm h-8 flex-1"
-          />
-          <Button size="sm" className="h-8 px-2" onClick={addGoal} disabled={addingGoal}>+</Button>
-        </div>
-      </aside>
+            Clear history
+          </Button>
+        )}
+      </div>
 
-      {/* Chat */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center justify-between px-6 py-3 border-b bg-card">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setGoalsOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
-              aria-label="Open goals"
-            >
-              🎯 Goals
-            </button>
-            <div>
-              <h1 className="font-semibold text-foreground">AI Coach</h1>
-              <p className="text-xs text-muted-foreground">Powered by ChatGPT · context includes your last 90 days</p>
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-6 py-4 pb-24 lg:pb-4 flex flex-col gap-4">
+        {messages.length === 0 && !streaming && (
+          <div className="text-center py-16 text-muted-foreground">
+            <p className="text-4xl mb-3">🤖</p>
+            <p className="font-medium">Your personal triathlon coach</p>
+            <p className="text-sm mt-1">
+              Ask about training, recovery, or tell me to adjust your plan.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 mt-4">
+              {[
+                "How is my fitness trending?",
+                "Skip today's run, bad weather",
+                "Am I overtraining?",
+                "Swap tomorrow's ride for a swim",
+              ].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setInput(s)}
+                  className="text-sm px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
-          {messages.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={clearHistory} className="text-muted-foreground hover:text-foreground">
-              Clear history
-            </Button>
-          )}
-        </div>
+        )}
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 pb-24 lg:pb-4 flex flex-col gap-4">
-          {messages.length === 0 && !streaming && (
-            <div className="text-center py-16 text-muted-foreground">
-              <p className="text-4xl mb-3">🤖</p>
-              <p className="font-medium">Your personal triathlon coach</p>
-              <p className="text-sm mt-1">Ask about your training, recovery, race plans, or technique.</p>
-              <div className="flex flex-wrap justify-center gap-2 mt-4">
-                {[
-                  "How is my fitness trending?",
-                  "Suggest a workout for tomorrow",
-                  "Am I overtraining?",
-                  "Review my last week",
-                ].map((s) => (
-                  <button key={s} onClick={() => { setInput(s); }}
-                    className="text-sm px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+          >
+            <div
+              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
                 msg.role === "user"
                   ? "bg-primary text-primary-foreground rounded-br-sm"
                   : "bg-card border border-border text-foreground rounded-bl-sm"
-              }`}>
-                {msg.role === "assistant" && msg.content === "" ? (
-                  <span className="inline-flex gap-1">
-                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:0ms]" />
-                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:150ms]" />
-                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:300ms]" />
-                  </span>
-                ) : msg.role === "assistant" ? (
-                  <div className="prose prose-sm prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-0 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-strong:text-foreground">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <span className="whitespace-pre-wrap">{msg.content}</span>
-                )}
-              </div>
+              }`}
+            >
+              {msg.role === "assistant" && msg.content === "" ? (
+                <span className="inline-flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:0ms]" />
+                  <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:150ms]" />
+                  <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:300ms]" />
+                </span>
+              ) : msg.role === "assistant" ? (
+                <div className="prose prose-sm prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-0 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-strong:text-foreground">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+              ) : (
+                <span className="whitespace-pre-wrap">{msg.content}</span>
+              )}
             </div>
-          ))}
-          <div ref={bottomRef} />
-        </div>
-
-        {/* Input */}
-        <div className="px-6 py-4 border-t border-border bg-card fixed bottom-0 left-0 right-0 lg:relative lg:bottom-auto">
-          <div className="flex gap-2 max-w-3xl mx-auto">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder="Ask your coach…"
-              disabled={streaming}
-              className="flex-1"
-            />
-            <Button onClick={send} disabled={streaming || !input.trim()}>
-              {streaming ? "…" : "Send"}
-            </Button>
           </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div className="px-6 py-4 border-t border-border bg-card fixed bottom-0 left-0 right-0 lg:relative lg:bottom-auto">
+        <div className="flex gap-2 max-w-3xl mx-auto">
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Ask your coach or adjust your plan…"
+            disabled={streaming}
+            className="flex-1"
+          />
+          <Button onClick={send} disabled={streaming || !input.trim()}>
+            {streaming ? "…" : "Send"}
+          </Button>
         </div>
       </div>
     </div>

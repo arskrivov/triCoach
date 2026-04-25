@@ -892,7 +892,7 @@ async def build_dashboard_overview(
     )
     activities = [ActivityRow(**row) for row in (activities_res.data or [])]
     health_rows = [DailyHealthRow(**row) for row in (health_res.data or [])]
-    workouts = [WorkoutRow(**row, scheduled_date=(row.get("content") or {}).get("scheduled_date")) for row in (workouts_res.data or [])]
+    workouts = [WorkoutRow(**row) for row in (workouts_res.data or [])]
     goals = goals_res.data or []
 
     latest_health = health_rows[0] if health_rows else None

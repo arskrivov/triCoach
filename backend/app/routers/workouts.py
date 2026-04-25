@@ -85,12 +85,12 @@ async def create_workout(
         "user_id": current_user.id,
         "discipline": body.discipline.upper(),
         "builder_type": body.builder_type.upper(),
-        **body.model_dump(exclude={"discipline", "builder_type", "scheduled_date", "content"}),
+        **body.model_dump(exclude={"discipline", "builder_type", "content"}),
         "content": content,
     }
     res = await sb.table("workouts").insert(payload).execute()
     row = res.data[0]
-    return {**row, "scheduled_date": (row.get("content") or {}).get("scheduled_date")}
+    return row
 
 
 @router.get("", response_model=list[WorkoutResponse])
@@ -113,10 +113,7 @@ async def list_workouts(
     if is_template is not None:
         q = q.eq("is_template", is_template)
     res = await q.execute()
-    return [
-        {**row, "scheduled_date": (row.get("content") or {}).get("scheduled_date")}
-        for row in (res.data or [])
-    ]
+    return [row for row in (res.data or [])]
 
 
 @router.get("/{workout_id}", response_model=WorkoutResponse)
@@ -131,7 +128,7 @@ async def get_workout(
     if not res.data:
         raise HTTPException(status_code=404, detail="Workout not found")
     row = res.data[0]
-    return {**row, "scheduled_date": (row.get("content") or {}).get("scheduled_date")}
+    return row
 
 
 @router.put("/{workout_id}", response_model=WorkoutResponse)
@@ -158,12 +155,14 @@ async def update_workout(
     if body.scheduled_date is not None:
         if body.scheduled_date:
             current_content["scheduled_date"] = body.scheduled_date
+            payload["scheduled_date"] = body.scheduled_date
         else:
             current_content.pop("scheduled_date", None)
+            payload["scheduled_date"] = None
     payload["content"] = current_content
     res = await sb.table("workouts").update(payload).eq("id", workout_id).execute()
     row = res.data[0]
-    return {**row, "scheduled_date": (row.get("content") or {}).get("scheduled_date")}
+    return row
 
 
 @router.delete("/{workout_id}", status_code=status.HTTP_204_NO_CONTENT)

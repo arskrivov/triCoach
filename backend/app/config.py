@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # AI Coach
     openai_api_key: str = ""
-    openai_coach_model: str = "gpt-4.1"
+    openai_coach_model: str = "gpt-4.1-mini"
     openai_analysis_model: str = "gpt-4.1-mini"
 
     # CORS

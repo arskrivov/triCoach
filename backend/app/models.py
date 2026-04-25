@@ -45,6 +45,8 @@ class ActivityRow(BaseModel):
     # Strength
     exercises: Any = None
     total_sets: int | None = None
+    total_volume_kg: float | None = None
+    primary_muscle_groups: list[str] | None = None
     # Yoga/Mobility
     session_type: str | None = None
     # Training effect (aerobic/anaerobic, 0–5 scale)
@@ -117,6 +119,7 @@ class AthleteProfileRow(BaseModel):
     bench_1rm_kg: float | None = None
     overhead_press_1rm_kg: float | None = None
     mobility_sessions_per_week_target: int = 2
+    weekly_training_hours: float | None = None
 
 
 class GoalRow(BaseModel):
@@ -127,6 +130,9 @@ class GoalRow(BaseModel):
     sport: str | None = None
     weekly_volume_km: float | None = None
     is_active: bool = True
+    race_type: str | None = None
+    weekly_hours_budget: float | None = None
+    priority: int = 1
     created_at: str = ""
 
 
@@ -135,6 +141,22 @@ class CoachConversationRow(BaseModel):
     user_id: str = ""
     messages: list = Field(default_factory=list)
     updated_at: str = ""
+
+
+class TrainingPlanRow(BaseModel):
+    id: str = ""
+    user_id: str = ""
+    goal_id: str | None = None
+    name: str = ""
+    status: str = "active"
+    race_date: str | None = None
+    start_date: str = ""
+    end_date: str = ""
+    weekly_hours: float = 0.0
+    plan_structure: dict = Field(default_factory=dict)
+    adjustments: list = Field(default_factory=list)
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class WorkoutRow(BaseModel):
@@ -151,6 +173,9 @@ class WorkoutRow(BaseModel):
     garmin_workout_id: int | None = None
     is_template: bool = False
     scheduled_date: str | None = None
+    plan_id: str | None = None
+    plan_week: int | None = None
+    plan_day: int | None = None
     created_at: str = ""
     updated_at: str = ""
 
