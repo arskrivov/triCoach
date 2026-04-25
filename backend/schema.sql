@@ -54,6 +54,11 @@ create table if not exists activities (
   -- Yoga / Mobility
   session_type            text,
 
+  -- Training effect (aerobic/anaerobic, 0–5 scale)
+  aerobic_training_effect   float,
+  anaerobic_training_effect float,
+  training_effect_label     text,
+
   notes                   text,
   synced_at               timestamptz default now()
 );

@@ -23,34 +23,11 @@ export interface ActivitySummary {
   avg_power_watts: number | null;
   tss: number | null;
   total_sets: number | null;
+  total_volume_kg: number | null;
   session_type: string | null;
   aerobic_training_effect: number | null;
   anaerobic_training_effect: number | null;
   training_effect_label: string | null;
-}
-
-export interface ActivityDetail extends ActivitySummary {
-  polyline: string | null;
-  laps: unknown;
-  hr_zones: unknown;
-  exercises: ExerciseRecord[] | null;
-  ai_analysis: string | null;
-  total_volume_kg: number | null;
-  primary_muscle_groups: string[] | null;
-  notes: string | null;
-}
-
-export interface ExerciseRecord {
-  name: string;
-  muscle_groups: string[];
-  sets: ExerciseSet[];
-}
-
-export interface ExerciseSet {
-  reps?: number;
-  weight_kg?: number;
-  duration_sec?: number;
-  rpe?: number;
 }
 
 export interface DailyHealth {

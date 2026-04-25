@@ -12,7 +12,6 @@ import {
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
-  { href: "/activities", label: "Activities", icon: "⚡" },
   { href: "/workouts", label: "Workouts", icon: "🏋️" },
   { href: "/routes", label: "Routes", icon: "🗺️" },
   { href: "/coach", label: "AI Coach", icon: "🤖" },

@@ -28,7 +28,6 @@ import { Button } from "@/components/ui/button";
 import { CoachBriefingCard } from "./coach-briefing-card";
 import { RecoveryOverviewCard } from "./recovery-overview-card";
 import { ActivityOverviewCard } from "./activity-overview-card";
-import { RecentActivitiesCard } from "./recent-activities-card";
 import { UpcomingWorkoutsCard } from "./upcoming-workouts-card";
 
 type SyncNotice = {
@@ -227,10 +226,7 @@ export function DashboardContent() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[8fr_4fr]">
-        <RecentActivitiesCard activities={data.recent_activities} />
-        <UpcomingWorkoutsCard workouts={data.upcoming_workouts} />
-      </div>
+      <UpcomingWorkoutsCard workouts={data.upcoming_workouts} />
     </div>
   );
 }

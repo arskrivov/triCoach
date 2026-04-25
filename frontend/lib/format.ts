@@ -90,6 +90,7 @@ export function primaryStat(activity: {
   avg_pace_sec_per_km: number | null;
   avg_power_watts: number | null;
   total_sets: number | null;
+  total_volume_kg: number | null;
   duration_seconds: number | null;
   session_type: string | null;
 }): string {
@@ -102,7 +103,8 @@ export function primaryStat(activity: {
   }
   if (discipline === "STRENGTH") {
     const sets = activity.total_sets ? `${activity.total_sets} sets` : null;
-    return sets || "—";
+    const vol = activity.total_volume_kg ? `${activity.total_volume_kg.toLocaleString()} kg` : null;
+    return [sets, vol].filter(Boolean).join(" · ") || "—";
   }
   return activity.session_type?.replace(/_/g, " ") ?? formatDuration(activity.duration_seconds);
 }

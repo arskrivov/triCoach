@@ -32,6 +32,9 @@ class ActivitySummary(BaseModel):
     total_sets: int | None
     total_volume_kg: float | None
     session_type: str | None
+    aerobic_training_effect: float | None = None
+    anaerobic_training_effect: float | None = None
+    training_effect_label: str | None = None
 
 
 class ActivityDetail(ActivitySummary):
@@ -42,6 +45,11 @@ class ActivityDetail(ActivitySummary):
     primary_muscle_groups: list[str] | None
     notes: str | None
     ai_analysis: str | None
+    ai_analyzed_at: str | None
+    max_hr: int | None
+    normalized_power_watts: int | None
+    avg_cadence: int | None
+    intensity_factor: float | None
 
 
 class DailyHealthSchema(BaseModel):
@@ -85,6 +93,7 @@ class ActivityFileMetadata(BaseModel):
 @router.get("", response_model=list[ActivitySummary])
 async def list_activities(
     discipline: str | None = Query(None),
+    since: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     current_user: UserRow = Depends(get_current_user),
@@ -98,6 +107,9 @@ async def list_activities(
 
     if discipline:
         q = q.eq("discipline", discipline.upper())
+
+    if since:
+        q = q.gte("start_time", since)
 
     res = await q.execute()
     return res.data or []
