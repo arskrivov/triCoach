@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from statistics import median
 
@@ -7,6 +8,8 @@ from pydantic import BaseModel, Field
 from supabase import AsyncClient
 
 from app.models import ActivityRow, AthleteProfileRow, DailyHealthRow
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MOBILITY_TARGET = 2
 
@@ -151,6 +154,75 @@ def _derive_strength_1rms(activities: list[ActivityRow]) -> dict[str, float | No
     return estimates
 
 
+async def _fetch_garmin_profile_values(user_id: str, sb: AsyncClient) -> dict[str, int | float | None]:
+    """Fetch athlete profile values directly from Garmin user settings.
+    
+    This fetches:
+    - max_hr, resting_hr from /biometric-service/heartRateZones
+    - threshold_pace_sec_per_km from /biometric-service/lactateThreshold (speed field)
+    - ftp_watts from /biometric-service/lactateThreshold (cycling FTP if available)
+    - weight_kg from /biometric-service/lactateThreshold (weight field)
+    
+    Returns a dict with Garmin profile values, or empty dict if Garmin is not connected.
+    """
+    try:
+        from app.services.garmin import get_garmin_client
+        client = await get_garmin_client(user_id, sb)
+    except Exception as e:
+        logger.debug("Could not get Garmin client for user %s: %s", user_id, e)
+        return {}
+    
+    values: dict[str, int | float | None] = {}
+    
+    # Fetch HR zones for max_hr and resting_hr
+    try:
+        hr_zones = client.connectapi('/biometric-service/heartRateZones')
+        if hr_zones and isinstance(hr_zones, list) and hr_zones:
+            zone_data = hr_zones[0]
+            max_hr = zone_data.get('maxHeartRateUsed')
+            resting_hr = zone_data.get('restingHeartRateUsed')
+            if max_hr and 100 <= max_hr <= 250:
+                values['max_hr'] = int(max_hr)
+            if resting_hr and 30 <= resting_hr <= 100:
+                values['resting_hr'] = int(resting_hr)
+    except Exception as e:
+        logger.debug("Could not fetch HR zones from Garmin for user %s: %s", user_id, e)
+    
+    # Fetch lactate threshold for threshold pace, FTP, and weight
+    try:
+        lt = client.get_lactate_threshold()
+        if lt:
+            # Threshold pace from speed field
+            # Note: Garmin returns speed in a scaled format (divide by 10 to get m/s)
+            speed_hr = lt.get('speed_and_heart_rate') or {}
+            speed_raw = speed_hr.get('speed')
+            if speed_raw and speed_raw > 0:
+                # The speed value from Garmin appears to be in m/s * 0.1
+                # Multiply by 10 to get actual m/s, then convert to sec/km
+                speed_ms = speed_raw * 10
+                threshold_pace = round(1000 / speed_ms, 1)
+                if 150 <= threshold_pace <= 600:  # Reasonable pace range (2:30 - 10:00/km)
+                    values['threshold_pace_sec_per_km'] = threshold_pace
+            
+            # FTP and weight from power section
+            power_data = lt.get('power') or {}
+            sport = power_data.get('sport', '').upper()
+            ftp = power_data.get('functionalThresholdPower')
+            weight = power_data.get('weight')
+            
+            # Only use FTP if it's for cycling (not running power)
+            if ftp and sport == 'CYCLING' and 50 <= ftp <= 500:
+                values['ftp_watts'] = int(ftp)
+            
+            # Weight in kg
+            if weight and 30 <= weight <= 200:
+                values['weight_kg'] = round(float(weight), 1)
+    except Exception as e:
+        logger.debug("Could not fetch lactate threshold from Garmin for user %s: %s", user_id, e)
+    
+    return values
+
+
 def merge_profile_fields(
     manual: AthleteProfileRow | None,
     derived_values: dict[str, int | float | None],
@@ -208,8 +280,9 @@ async def get_effective_athlete_profile(user_id: str, sb: AsyncClient) -> Effect
     health_res = await sb.table("daily_health").select("*").eq("user_id", user_id).gte("date", health_since).execute()
     health_rows = [DailyHealthRow(**r) for r in (health_res.data or [])]
 
+    # First, get values derived from activity/health data (fallback)
     derived_strength = _derive_strength_1rms(activities)
-    derived_values: dict[str, int | float | None] = {
+    activity_derived: dict[str, int | float | None] = {
         "ftp_watts": _derive_ftp_watts(activities),
         "threshold_pace_sec_per_km": _derive_threshold_pace(activities),
         "swim_css_sec_per_100m": _derive_swim_css(activities),
@@ -218,6 +291,15 @@ async def get_effective_athlete_profile(user_id: str, sb: AsyncClient) -> Effect
         "weight_kg": None,
         **derived_strength,
     }
+    
+    # Then, fetch Garmin user profile settings (preferred source for thresholds)
+    garmin_profile = await _fetch_garmin_profile_values(user_id, sb)
+    
+    # Merge: Garmin profile values take priority over activity-derived values
+    derived_values: dict[str, int | float | None] = {**activity_derived}
+    for key, value in garmin_profile.items():
+        if value is not None:
+            derived_values[key] = value
 
     values, field_sources, garmin_values = merge_profile_fields(manual, derived_values)
 
