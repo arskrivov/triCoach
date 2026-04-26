@@ -1,7 +1,8 @@
 """Coach tool functions — callable by the AI coach via function calling.
 
 Each function performs a specific plan modification and returns a
-human-readable summary of what was done.
+human-readable summary of what was done. Automatically syncs changes
+to Garmin Connect when applicable.
 """
 
 from __future__ import annotations
@@ -13,6 +14,11 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from supabase import AsyncClient
+
+from app.services.garmin_workout_sync import (
+    delete_workout_from_garmin,
+    sync_workout_to_garmin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +50,12 @@ async def skip_workout(
         "estimated_tss": 0,
         "updated_at": now,
     }).eq("id", workout_id).execute()
+
+    # Auto-sync to Garmin (will delete the workout from Garmin)
+    try:
+        await delete_workout_from_garmin(workout_id, user_id, sb)
+    except Exception as exc:
+        logger.warning("Garmin sync failed for skipped workout %s: %s", workout_id, exc)
 
     name = workout.get("name", "Workout")
     return f"Skipped '{name}' — {reason}"
@@ -97,6 +109,12 @@ async def modify_workout(
 
     await sb.table("workouts").update(update).eq("id", workout_id).execute()
 
+    # Auto-sync to Garmin
+    try:
+        await sync_workout_to_garmin(workout_id, user_id, sb)
+    except Exception as exc:
+        logger.warning("Garmin sync failed for modified workout %s: %s", workout_id, exc)
+
     old_name = workout.get("name", "Workout")
     return f"Modified '{old_name}': {', '.join(changes)}. Reason: {reason}"
 
@@ -140,7 +158,15 @@ async def add_workout(
         "created_at": now,
         "updated_at": now,
     }
-    await sb.table("workouts").insert(workout).execute()
+    res = await sb.table("workouts").insert(workout).execute()
+
+    # Auto-sync to Garmin
+    workout_id = res.data[0]["id"] if res.data else workout["id"]
+    try:
+        await sync_workout_to_garmin(workout_id, user_id, sb)
+    except Exception as exc:
+        logger.warning("Garmin sync failed for new workout %s: %s", workout_id, exc)
+
     return f"Added '{name}' ({discipline}, {duration_minutes}min) on {scheduled_date}."
 
 

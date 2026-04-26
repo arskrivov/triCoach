@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Any
 
@@ -8,8 +9,13 @@ from supabase import AsyncClient
 from app.database import get_supabase
 from app.models import UserRow
 from app.services.auth import get_current_user
+from app.services.garmin_workout_sync import (
+    delete_workout_from_garmin,
+    sync_workout_to_garmin,
+)
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
+logger = logging.getLogger(__name__)
 
 
 class WorkoutCreate(BaseModel):
@@ -90,6 +96,14 @@ async def create_workout(
     }
     res = await sb.table("workouts").insert(payload).execute()
     row = res.data[0]
+
+    # Auto-sync to Garmin if part of a plan
+    if row.get("plan_id"):
+        try:
+            await sync_workout_to_garmin(row["id"], current_user.id, sb)
+        except Exception as exc:
+            logger.warning("Garmin sync failed for new workout %s: %s", row["id"], exc)
+
     return row
 
 
@@ -162,6 +176,14 @@ async def update_workout(
     payload["content"] = current_content
     res = await sb.table("workouts").update(payload).eq("id", workout_id).execute()
     row = res.data[0]
+
+    # Auto-sync to Garmin if part of a plan
+    if row.get("plan_id"):
+        try:
+            await sync_workout_to_garmin(workout_id, current_user.id, sb)
+        except Exception as exc:
+            logger.warning("Garmin sync failed for updated workout %s: %s", workout_id, exc)
+
     return row
 
 
@@ -171,11 +193,19 @@ async def delete_workout(
     current_user: UserRow = Depends(get_current_user),
     sb: AsyncClient = Depends(get_supabase),
 ):
-    existing = await sb.table("workouts").select("id").eq("id", workout_id).eq(
+    existing = await sb.table("workouts").select("id,plan_id,garmin_workout_id").eq("id", workout_id).eq(
         "user_id", current_user.id
     ).limit(1).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Workout not found")
+
+    # Delete from Garmin first if synced
+    if existing.data[0].get("garmin_workout_id"):
+        try:
+            await delete_workout_from_garmin(workout_id, current_user.id, sb)
+        except Exception as exc:
+            logger.warning("Garmin delete failed for workout %s: %s", workout_id, exc)
+
     await sb.table("workouts").delete().eq("id", workout_id).execute()
 
 

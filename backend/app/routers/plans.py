@@ -12,7 +12,10 @@ from supabase import AsyncClient
 from app.database import get_supabase
 from app.models import UserRow
 from app.services.auth import get_current_user
-from app.services.garmin_workout_sync import sync_plan_to_garmin
+from app.services.garmin_workout_sync import (
+    sync_plan_to_garmin,
+    sync_workouts_batch_to_garmin,
+)
 from app.services.plan_adjuster import adjust_plan
 from app.services.plan_generator import generate_plan
 
@@ -756,6 +759,14 @@ Example: [{{"id": "abc", "content": {{...}}, "description": "..."}}]"""
             enriched_count += 1
         except Exception as exc:
             logger.error("Failed to update workout %s: %s", w["id"], exc)
+
+    # Auto-sync enriched workouts to Garmin
+    enriched_ids = [w["id"] for w in to_enrich if w["id"] in enrichment_map]
+    if enriched_ids:
+        try:
+            await sync_workouts_batch_to_garmin(enriched_ids, current_user.id, sb)
+        except Exception as exc:
+            logger.warning("Garmin sync failed for enriched workouts: %s", exc)
 
     # Re-fetch updated workouts
     updated_res = await sb.table("workouts").select("*").eq(

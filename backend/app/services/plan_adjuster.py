@@ -2,7 +2,7 @@
 
 Adjusts existing training plans based on athlete constraints (injury,
 schedule changes, fatigue) using OpenAI. Only modifies current or future
-workouts — never past ones.
+workouts — never past ones. Automatically syncs changes to Garmin Connect.
 """
 
 from __future__ import annotations
@@ -18,6 +18,10 @@ from supabase import AsyncClient
 
 from app.config import settings
 from app.models import DailyHealthRow, TrainingPlanRow, WorkoutRow
+from app.services.garmin_workout_sync import (
+    delete_workout_from_garmin,
+    sync_workout_to_garmin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -444,6 +448,11 @@ async def _apply_adjustments(
             ).execute()
             if res.data:
                 modified.append(res.data[0])
+                # Auto-sync to Garmin (delete skipped workout)
+                try:
+                    await delete_workout_from_garmin(workout_id, user_id, sb)
+                except Exception as exc:
+                    logger.warning("Garmin sync failed for skipped workout %s: %s", workout_id, exc)
 
         elif action in ("modify", "swap") and workout_id:
             # Verify the workout is current/future
@@ -486,6 +495,11 @@ async def _apply_adjustments(
                 ).execute()
                 if res.data:
                     modified.append(res.data[0])
+                    # Auto-sync to Garmin
+                    try:
+                        await sync_workout_to_garmin(workout_id, user_id, sb)
+                    except Exception as exc:
+                        logger.warning("Garmin sync failed for modified workout %s: %s", workout_id, exc)
 
         elif action in ("modify", "swap") and not workout_id:
             # New workout to redistribute load — create a new workout row
@@ -522,5 +536,10 @@ async def _apply_adjustments(
             res = await sb.table("workouts").insert(new_workout).execute()
             if res.data:
                 modified.append(res.data[0])
+                # Auto-sync to Garmin
+                try:
+                    await sync_workout_to_garmin(res.data[0]["id"], user_id, sb)
+                except Exception as exc:
+                    logger.warning("Garmin sync failed for new workout %s: %s", res.data[0]["id"], exc)
 
     return modified

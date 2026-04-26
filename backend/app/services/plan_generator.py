@@ -2,6 +2,7 @@
 
 Generates periodized multi-sport training plans using OpenAI, based on
 athlete profile, fitness data, health metrics, and goal parameters.
+Automatically syncs generated workouts to Garmin Connect.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from app.config import settings
 from app.models import ActivityRow, DailyHealthRow, GoalRow
 from app.services.athlete_profile import get_effective_athlete_profile
 from app.services.fitness import get_fitness_timeline
+from app.services.garmin_workout_sync import sync_workouts_batch_to_garmin
 
 logger = logging.getLogger(__name__)
 
@@ -639,6 +641,19 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
 
     print(f"[PLAN-GEN] SUCCESS: {plan_name} — {total_weeks} weeks, {len(created_workouts)} workouts")
 
+    # Auto-sync upcoming workouts to Garmin (next 14 days)
+    upcoming_workout_ids = [
+        w["id"] for w in created_workouts
+        if w.get("scheduled_date") and date.fromisoformat(w["scheduled_date"]) >= date.today()
+        and date.fromisoformat(w["scheduled_date"]) <= date.today() + timedelta(days=14)
+    ]
+    if upcoming_workout_ids:
+        try:
+            await sync_workouts_batch_to_garmin(upcoming_workout_ids, user_id, sb)
+            logger.info("Auto-synced %d workouts to Garmin", len(upcoming_workout_ids))
+        except Exception as exc:
+            logger.warning("Garmin auto-sync failed: %s", exc)
+
     return {"plan": created_plan, "workouts": created_workouts}
     # 1. Fetch all active races
     races_res = await sb.table("goals").select("*").eq(
@@ -917,5 +932,18 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
         plan_name, total_weeks, len(created_workouts),
     )
     print(f"[PLAN-GEN] SUCCESS: {plan_name} — {total_weeks} weeks, {len(created_workouts)} workouts")
+
+    # Auto-sync upcoming workouts to Garmin (next 14 days)
+    upcoming_workout_ids = [
+        w["id"] for w in created_workouts
+        if w.get("scheduled_date") and date.fromisoformat(w["scheduled_date"]) >= date.today()
+        and date.fromisoformat(w["scheduled_date"]) <= date.today() + timedelta(days=14)
+    ]
+    if upcoming_workout_ids:
+        try:
+            await sync_workouts_batch_to_garmin(upcoming_workout_ids, user_id, sb)
+            logger.info("Auto-synced %d workouts to Garmin", len(upcoming_workout_ids))
+        except Exception as exc:
+            logger.warning("Garmin auto-sync failed: %s", exc)
 
     return {"plan": created_plan, "workouts": created_workouts}
