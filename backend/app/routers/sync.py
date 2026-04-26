@@ -63,16 +63,18 @@ async def _run_sync(
         except APIError:
             logger.warning("Skipping per-activity AI analysis queue; activities.ai_analysis is unavailable.")
 
-        if activities > 0 or health > 0:
-            try:
-                await build_dashboard_overview(
-                    current_user,
-                    sb,
-                    timezone_name=timezone_name,
-                    allow_briefing_generation=True,
-                )
-            except Exception:
-                logger.exception("Daily dashboard briefing generation failed for user %s", current_user.id)
+        # Always attempt briefing generation after sync - the dashboard service
+        # handles caching via data_signature, so this is safe to call even if
+        # no new data was synced (e.g., re-sync of same day's data)
+        try:
+            await build_dashboard_overview(
+                current_user,
+                sb,
+                timezone_name=timezone_name,
+                allow_briefing_generation=True,
+            )
+        except Exception:
+            logger.exception("Daily dashboard briefing generation failed for user %s", current_user.id)
         return SyncResponse(
             activities_synced=activities,
             activity_files_synced=activity_files,
