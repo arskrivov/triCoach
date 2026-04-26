@@ -558,30 +558,26 @@ async def sync_workout_to_garmin(
         garmin_format = convert_workout_to_garmin(workout)
 
         if workout.garmin_workout_id:
-            # Update existing workout on Garmin
-            garmin_format["workoutId"] = workout.garmin_workout_id
+            # Garmin API doesn't support updating workouts directly.
+            # Delete the old one and create a new one.
             try:
-                garmin.update_workout(workout.garmin_workout_id, garmin_format)
+                garmin.delete_workout(workout.garmin_workout_id)
                 logger.info(
-                    "Updated workout %s on Garmin (garmin_id=%s)",
+                    "Deleted old Garmin workout %s for workout %s",
+                    workout.garmin_workout_id,
                     workout_id,
-                    workout.garmin_workout_id,
                 )
-                return {
-                    "status": "updated",
-                    "garmin_workout_id": workout.garmin_workout_id,
-                }
-            except Exception as update_err:
-                # If update fails (e.g., workout deleted on Garmin), try creating new
+            except Exception as del_err:
+                # If delete fails (e.g., workout already deleted on Garmin), continue
                 logger.warning(
-                    "Failed to update Garmin workout %s, will create new: %s",
+                    "Could not delete old Garmin workout %s: %s",
                     workout.garmin_workout_id,
-                    update_err,
+                    del_err,
                 )
-                # Clear the old garmin_workout_id and fall through to create
-                await sb.table("workouts").update(
-                    {"garmin_workout_id": None}
-                ).eq("id", workout_id).execute()
+            # Clear the old garmin_workout_id
+            await sb.table("workouts").update(
+                {"garmin_workout_id": None}
+            ).eq("id", workout_id).execute()
 
         # Create new workout on Garmin
         upload_result = garmin.upload_workout(garmin_format)
