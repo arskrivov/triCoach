@@ -13,6 +13,7 @@ from app.database import get_supabase
 from app.models import UserRow
 from app.services.auth import get_current_user
 from app.services.garmin_workout_sync import (
+    delete_plan_workouts_from_garmin,
     sync_plan_to_garmin,
     sync_workouts_batch_to_garmin,
 )
@@ -189,12 +190,22 @@ async def archive_plan(
     current_user: UserRow = Depends(get_current_user),
     sb: AsyncClient = Depends(get_supabase),
 ):
-    """Archive a plan (soft delete — sets status to 'archived')."""
+    """Archive a plan (soft delete — sets status to 'archived').
+
+    Also cleans up any Garmin workouts associated with the plan.
+    """
     existing = await sb.table("training_plans").select("id").eq(
         "id", plan_id
     ).eq("user_id", current_user.id).limit(1).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Plan not found")
+
+    # Clean up Garmin workouts before archiving
+    try:
+        await delete_plan_workouts_from_garmin(plan_id, current_user.id, sb)
+    except Exception:
+        # Don't fail the archive if Garmin cleanup fails
+        pass
 
     await sb.table("training_plans").update({"status": "archived"}).eq("id", plan_id).execute()
 

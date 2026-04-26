@@ -3,6 +3,12 @@
 Converts workout content JSONB to Garmin workout format and uploads
 via the garminconnect library. Schedules workouts on the Garmin calendar
 for the correct date.
+
+Key behaviors:
+- Workouts are identified by their database ID, stored in garmin_workout_id
+- Updates are done by deleting the old Garmin workout and creating a new one
+- Duplicates are prevented by checking garmin_workout_id before creating
+- Sport types are properly mapped (swim, run, cycling, etc.)
 """
 
 from __future__ import annotations
@@ -319,12 +325,16 @@ async def sync_plan_to_garmin(
     user_id: str,
     sb: AsyncClient,
 ) -> dict[str, Any]:
-    """Sync upcoming 14 days of unsynced workouts to Garmin Connect.
+    """Sync upcoming 14 days of workouts to Garmin Connect.
+
+    This function syncs ALL upcoming workouts, not just unsynced ones.
+    For workouts that already have a garmin_workout_id, it will update them
+    (delete + recreate on Garmin).
 
     1. Verify plan ownership
-    2. Fetch upcoming unsynced workouts (next 14 days)
+    2. Fetch upcoming workouts (next 14 days) - both synced and unsynced
     3. Get authenticated Garmin client
-    4. For each workout: convert → upload → store garmin_workout_id → schedule
+    4. For each workout: sync (create or update)
     5. Handle partial failures (skip failed, continue with others)
 
     Returns dict with synced/failed counts and details.
@@ -344,15 +354,13 @@ async def sync_plan_to_garmin(
             detail="Plan not found",
         )
 
-    # 2. Fetch upcoming 14 days of unsynced workouts
+    # 2. Fetch upcoming 14 days of workouts (ALL, not just unsynced)
     today = date.today()
     end_date = today + timedelta(days=14)
 
     workouts_res = await sb.table("workouts").select("*").eq(
         "plan_id", plan_id
-    ).eq("user_id", user_id).is_(
-        "garmin_workout_id", "null"
-    ).gte(
+    ).eq("user_id", user_id).gte(
         "scheduled_date", today.isoformat()
     ).lte(
         "scheduled_date", end_date.isoformat()
@@ -364,92 +372,55 @@ async def sync_plan_to_garmin(
         return {
             "synced": 0,
             "failed": 0,
+            "skipped": 0,
             "total": 0,
             "details": [],
-            "message": "No unsynced workouts in the next 14 days",
+            "message": "No workouts in the next 14 days",
         }
 
     # 3. Get Garmin client (raises HTTPException 400 if not connected)
     garmin = await get_garmin_client(user_id, sb)
 
-    # 4. Convert, upload, and schedule each workout
+    # 4. Sync each workout using the individual sync function
     synced = 0
     failed = 0
+    skipped = 0
     details: list[dict[str, Any]] = []
 
     for workout in workout_rows:
-        try:
-            # Convert to Garmin format
-            garmin_format = convert_workout_to_garmin(workout)
+        result = await sync_workout_to_garmin(workout.id, user_id, sb)
+        status_str = result.get("status", "failed")
 
-            # Upload to Garmin Connect
-            upload_result = garmin.upload_workout(garmin_format)
-
-            # Extract the garmin workout ID from the response
-            garmin_workout_id = _extract_workout_id(upload_result)
-
-            if not garmin_workout_id:
-                logger.warning(
-                    "Could not extract workout ID from Garmin response for workout %s",
-                    workout.id,
-                )
-                failed += 1
-                details.append({
-                    "workout_id": workout.id,
-                    "name": workout.name,
-                    "status": "failed",
-                    "error": "Could not extract Garmin workout ID from upload response",
-                })
-                continue
-
-            # Store garmin_workout_id on the workout row
-            await sb.table("workouts").update(
-                {"garmin_workout_id": garmin_workout_id}
-            ).eq("id", workout.id).execute()
-
-            # Schedule on Garmin calendar for the correct date
-            if workout.scheduled_date:
-                try:
-                    garmin.schedule_workout(
-                        garmin_workout_id,
-                        str(workout.scheduled_date),
-                    )
-                except Exception as sched_err:
-                    # Workout was uploaded but scheduling failed — still count
-                    # as synced since the workout exists on Garmin.
-                    logger.warning(
-                        "Workout %s uploaded but scheduling failed: %s",
-                        workout.id,
-                        sched_err,
-                    )
-
+        if status_str in ("created", "updated"):
             synced += 1
             details.append({
                 "workout_id": workout.id,
                 "name": workout.name,
                 "scheduled_date": str(workout.scheduled_date),
-                "garmin_workout_id": garmin_workout_id,
-                "status": "synced",
+                "garmin_workout_id": result.get("garmin_workout_id"),
+                "status": status_str,
             })
-
-        except Exception as exc:
-            logger.error(
-                "Failed to sync workout %s (%s) to Garmin: %s",
-                workout.id,
-                workout.name,
-                exc,
-            )
+        elif status_str == "skipped":
+            skipped += 1
+            details.append({
+                "workout_id": workout.id,
+                "name": workout.name,
+                "status": "skipped",
+                "reason": result.get("reason"),
+            })
+        else:
             failed += 1
             details.append({
                 "workout_id": workout.id,
                 "name": workout.name,
                 "status": "failed",
-                "error": str(exc),
+                "error": result.get("error"),
             })
 
     return {
         "synced": synced,
         "failed": failed,
+        "skipped": skipped,
         "total": len(workout_rows),
         "details": details,
     }
@@ -499,15 +470,16 @@ async def sync_workout_to_garmin(
 ) -> dict[str, Any]:
     """Sync a single workout to Garmin Connect.
 
-    If the workout already has a garmin_workout_id, updates it on Garmin.
-    Otherwise, creates a new workout on Garmin.
+    If the workout already has a garmin_workout_id, updates it on Garmin
+    by deleting the old workout and creating a new one (Garmin API doesn't
+    support direct updates).
 
     Only syncs workouts that:
     - Have a scheduled_date in the future (or today)
     - Are not skipped (content.type != 'skipped')
     - Belong to a plan (plan_id is not null)
 
-    Returns dict with status and details.
+    Returns dict with status ('created', 'updated', 'skipped', 'failed') and details.
     """
     # Fetch the workout
     res = await sb.table("workouts").select("*").eq(
@@ -554,6 +526,9 @@ async def sync_workout_to_garmin(
         logger.warning("Could not get Garmin client for user %s: %s", user_id, exc)
         return {"status": "skipped", "reason": f"Garmin auth failed: {exc}"}
 
+    # Track if this is an update (had existing garmin_workout_id)
+    is_update = bool(workout.garmin_workout_id)
+
     try:
         garmin_format = convert_workout_to_garmin(workout)
 
@@ -574,7 +549,7 @@ async def sync_workout_to_garmin(
                     workout.garmin_workout_id,
                     del_err,
                 )
-            # Clear the old garmin_workout_id
+            # Clear the old garmin_workout_id before creating new
             await sb.table("workouts").update(
                 {"garmin_workout_id": None}
             ).eq("id", workout_id).execute()
@@ -605,13 +580,15 @@ async def sync_workout_to_garmin(
                 sched_err,
             )
 
+        status_str = "updated" if is_update else "created"
         logger.info(
-            "Created workout %s on Garmin (garmin_id=%s)",
+            "%s workout %s on Garmin (garmin_id=%s)",
+            status_str.capitalize(),
             workout_id,
             garmin_workout_id,
         )
         return {
-            "status": "created",
+            "status": status_str,
             "garmin_workout_id": garmin_workout_id,
         }
 
@@ -728,3 +705,119 @@ async def sync_workouts_batch_to_garmin(
         })
 
     return results
+
+
+async def delete_plan_workouts_from_garmin(
+    plan_id: str,
+    user_id: str,
+    sb: AsyncClient,
+) -> dict[str, Any]:
+    """Delete all Garmin workouts for a plan.
+
+    Used when archiving or regenerating a plan to clean up old workouts
+    from Garmin Connect.
+
+    Only deletes workouts that have a garmin_workout_id.
+
+    Returns dict with counts and details.
+    """
+    # Fetch all workouts with garmin_workout_id for this plan
+    res = await sb.table("workouts").select("id,garmin_workout_id,name").eq(
+        "plan_id", plan_id
+    ).eq("user_id", user_id).not_.is_(
+        "garmin_workout_id", "null"
+    ).execute()
+
+    workouts = res.data or []
+
+    if not workouts:
+        return {
+            "deleted": 0,
+            "failed": 0,
+            "total": 0,
+            "message": "No Garmin workouts to delete",
+        }
+
+    # Check if user has Garmin connected
+    user_res = await sb.table("users").select("garmin_session_data").eq(
+        "id", user_id
+    ).limit(1).execute()
+
+    if not user_res.data or not user_res.data[0].get("garmin_session_data"):
+        # Clear all garmin_workout_ids since we can't delete from Garmin
+        workout_ids = [w["id"] for w in workouts]
+        for wid in workout_ids:
+            await sb.table("workouts").update(
+                {"garmin_workout_id": None}
+            ).eq("id", wid).execute()
+        return {
+            "deleted": 0,
+            "cleared": len(workouts),
+            "total": len(workouts),
+            "message": "Garmin not connected, cleared local IDs only",
+        }
+
+    try:
+        garmin = await get_garmin_client(user_id, sb)
+    except Exception as exc:
+        logger.warning("Could not get Garmin client for plan cleanup: %s", exc)
+        return {
+            "deleted": 0,
+            "failed": len(workouts),
+            "total": len(workouts),
+            "error": str(exc),
+        }
+
+    deleted = 0
+    failed = 0
+    details: list[dict[str, Any]] = []
+
+    for workout in workouts:
+        garmin_workout_id = workout.get("garmin_workout_id")
+        workout_id = workout.get("id")
+
+        try:
+            garmin.delete_workout(garmin_workout_id)
+            # Clear garmin_workout_id from database
+            await sb.table("workouts").update(
+                {"garmin_workout_id": None}
+            ).eq("id", workout_id).execute()
+
+            deleted += 1
+            details.append({
+                "workout_id": workout_id,
+                "name": workout.get("name"),
+                "garmin_workout_id": garmin_workout_id,
+                "status": "deleted",
+            })
+            logger.info(
+                "Deleted Garmin workout %s for workout %s",
+                garmin_workout_id,
+                workout_id,
+            )
+        except Exception as exc:
+            # Clear garmin_workout_id anyway — workout may have been deleted manually
+            await sb.table("workouts").update(
+                {"garmin_workout_id": None}
+            ).eq("id", workout_id).execute()
+
+            failed += 1
+            details.append({
+                "workout_id": workout_id,
+                "name": workout.get("name"),
+                "garmin_workout_id": garmin_workout_id,
+                "status": "failed",
+                "error": str(exc),
+            })
+            logger.warning(
+                "Failed to delete Garmin workout %s: %s",
+                garmin_workout_id,
+                exc,
+            )
+
+    return {
+        "deleted": deleted,
+        "failed": failed,
+        "total": len(workouts),
+        "details": details,
+    }

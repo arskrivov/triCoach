@@ -20,13 +20,42 @@ from app.config import settings
 from app.models import ActivityRow, DailyHealthRow, GoalRow
 from app.services.athlete_profile import get_effective_athlete_profile
 from app.services.fitness import get_fitness_timeline
-from app.services.garmin_workout_sync import sync_workouts_batch_to_garmin
+from app.services.garmin_workout_sync import (
+    delete_plan_workouts_from_garmin,
+    sync_workouts_batch_to_garmin,
+)
 
 logger = logging.getLogger(__name__)
 
 VALID_DISCIPLINES = {"SWIM", "RUN", "RIDE_ROAD", "RIDE_GRAVEL", "STRENGTH", "YOGA", "MOBILITY"}
 
 DEFAULT_PLAN_WEEKS = 12
+
+
+async def _archive_active_plans_with_garmin_cleanup(
+    user_id: str,
+    sb: AsyncClient,
+) -> None:
+    """Archive all active plans for a user and clean up their Garmin workouts.
+
+    This should be called before creating a new plan to ensure old workouts
+    are removed from Garmin Connect.
+    """
+    existing_plans_res = await sb.table("training_plans").select("id").eq(
+        "user_id", user_id
+    ).eq("status", "active").execute()
+
+    for old_plan in (existing_plans_res.data or []):
+        try:
+            await delete_plan_workouts_from_garmin(old_plan["id"], user_id, sb)
+            logger.info("Cleaned up Garmin workouts for archived plan %s", old_plan["id"])
+        except Exception as exc:
+            logger.warning("Failed to clean up Garmin workouts for plan %s: %s", old_plan["id"], exc)
+
+    await sb.table("training_plans").update(
+        {"status": "archived"}
+    ).eq("user_id", user_id).eq("status", "active").execute()
+
 
 # ---------------------------------------------------------------------------
 # System prompt for AI plan generation
@@ -569,10 +598,8 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
     race_names = [r.description for r in all_races[:3]]
     plan_name = plan_data.get("plan_name") or " + ".join(race_names) + " Season Plan"
 
-    # 5. Archive any existing active plans
-    await sb.table("training_plans").update(
-        {"status": "archived"}
-    ).eq("user_id", user_id).eq("status", "active").execute()
+    # 5. Archive any existing active plans (and clean up their Garmin workouts)
+    await _archive_active_plans_with_garmin_cleanup(user_id, sb)
 
     # 6. Create training_plans row
     plan_id = str(uuid.uuid4())
@@ -857,10 +884,8 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
     race_names = [r.description for r in all_races[:3]]
     plan_name = plan_data.get("plan_name") or " + ".join(race_names) + " Season Plan"
 
-    # 5. Archive any existing active plans
-    await sb.table("training_plans").update(
-        {"status": "archived"}
-    ).eq("user_id", user_id).eq("status", "active").execute()
+    # 5. Archive any existing active plans (and clean up their Garmin workouts)
+    await _archive_active_plans_with_garmin_cleanup(user_id, sb)
 
     # 6. Create training_plans row
     plan_id = str(uuid.uuid4())

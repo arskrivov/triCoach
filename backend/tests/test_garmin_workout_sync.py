@@ -1,7 +1,10 @@
 """Tests for garmin_workout_sync service — convert_workout_to_garmin."""
 
 from app.models import WorkoutRow
-from app.services.garmin_workout_sync import convert_workout_to_garmin
+from app.services.garmin_workout_sync import (
+    convert_workout_to_garmin,
+    _SPORT_TYPE_MAP,
+)
 
 
 def _make_workout(**overrides) -> WorkoutRow:
@@ -189,3 +192,77 @@ class TestConvertWorkoutToGarmin:
         workout = _make_workout(description="Focus on cadence")
         result = convert_workout_to_garmin(workout)
         assert result["description"] == "Focus on cadence"
+
+
+class TestSportTypeMapping:
+    """Tests for sport type mapping to Garmin format."""
+
+    def test_all_disciplines_have_sport_type(self):
+        """Verify all supported disciplines map to valid Garmin sport types."""
+        disciplines = ["SWIM", "RUN", "RIDE_ROAD", "RIDE_GRAVEL", "STRENGTH", "YOGA", "MOBILITY"]
+        for discipline in disciplines:
+            assert discipline in _SPORT_TYPE_MAP, f"Missing sport type for {discipline}"
+            sport_type = _SPORT_TYPE_MAP[discipline]
+            assert "sportTypeId" in sport_type
+            assert "sportTypeKey" in sport_type
+            assert "displayOrder" in sport_type
+
+    def test_swim_uses_swimming_sport_type(self):
+        """Swim workouts should use Garmin's swimming sport type."""
+        workout = _make_workout(discipline="SWIM", name="Pool Session")
+        result = convert_workout_to_garmin(workout)
+        assert result["sportType"]["sportTypeId"] == 3
+        assert result["sportType"]["sportTypeKey"] == "swimming"
+        # Segment should also have swimming sport type
+        assert result["workoutSegments"][0]["sportType"]["sportTypeKey"] == "swimming"
+
+    def test_run_uses_running_sport_type(self):
+        """Run workouts should use Garmin's running sport type."""
+        workout = _make_workout(discipline="RUN", name="Easy Run")
+        result = convert_workout_to_garmin(workout)
+        assert result["sportType"]["sportTypeId"] == 1
+        assert result["sportType"]["sportTypeKey"] == "running"
+        assert result["workoutSegments"][0]["sportType"]["sportTypeKey"] == "running"
+
+    def test_ride_road_uses_cycling_sport_type(self):
+        """Road cycling workouts should use Garmin's cycling sport type."""
+        workout = _make_workout(discipline="RIDE_ROAD", name="Long Ride")
+        result = convert_workout_to_garmin(workout)
+        assert result["sportType"]["sportTypeId"] == 2
+        assert result["sportType"]["sportTypeKey"] == "cycling"
+        assert result["workoutSegments"][0]["sportType"]["sportTypeKey"] == "cycling"
+
+    def test_ride_gravel_uses_cycling_sport_type(self):
+        """Gravel cycling workouts should use Garmin's cycling sport type."""
+        workout = _make_workout(discipline="RIDE_GRAVEL", name="Gravel Adventure")
+        result = convert_workout_to_garmin(workout)
+        assert result["sportType"]["sportTypeId"] == 2
+        assert result["sportType"]["sportTypeKey"] == "cycling"
+
+    def test_strength_uses_fitness_equipment_sport_type(self):
+        """Strength workouts should use Garmin's fitness_equipment sport type."""
+        workout = _make_workout(discipline="STRENGTH", name="Leg Day")
+        result = convert_workout_to_garmin(workout)
+        assert result["sportType"]["sportTypeId"] == 6
+        assert result["sportType"]["sportTypeKey"] == "fitness_equipment"
+
+    def test_yoga_uses_other_sport_type(self):
+        """Yoga workouts should use Garmin's other sport type."""
+        workout = _make_workout(discipline="YOGA", name="Morning Yoga")
+        result = convert_workout_to_garmin(workout)
+        assert result["sportType"]["sportTypeId"] == 8
+        assert result["sportType"]["sportTypeKey"] == "other"
+
+    def test_mobility_uses_other_sport_type(self):
+        """Mobility workouts should use Garmin's other sport type."""
+        workout = _make_workout(discipline="MOBILITY", name="Hip Mobility")
+        result = convert_workout_to_garmin(workout)
+        assert result["sportType"]["sportTypeId"] == 8
+        assert result["sportType"]["sportTypeKey"] == "other"
+
+    def test_unknown_discipline_defaults_to_other(self):
+        """Unknown disciplines should default to 'other' sport type."""
+        workout = _make_workout(discipline="UNKNOWN_SPORT")
+        result = convert_workout_to_garmin(workout)
+        assert result["sportType"]["sportTypeKey"] == "other"
+        assert result["sportType"]["sportTypeId"] == 8
