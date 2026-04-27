@@ -654,7 +654,7 @@ export default function WorkoutsPage() {
                 </div>
               )}
 
-              {selectedWorkout.content?.main && selectedWorkout.content.main.length > 0 && (
+              {selectedWorkout.content?.main && Array.isArray(selectedWorkout.content.main) && selectedWorkout.content.main.length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Main Set</p>
                   <div className="space-y-1.5">
