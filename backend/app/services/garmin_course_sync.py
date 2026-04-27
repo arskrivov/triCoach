@@ -341,24 +341,22 @@ async def sync_route_to_garmin(
             detail=f"Failed to convert route to GPX: {exc}",
         ) from exc
 
-    # 4. Write GPX to a temp file and upload as a Garmin course
+    # 4. Write GPX to a temp file and upload to Garmin Connect as a course
+    #
+    # Strategy: Use upload_activity (which reliably works with the garminconnect
+    # library) to upload the GPX file. This creates it as an activity in Garmin
+    # Connect. The GPX contains route/track data that Garmin can use.
+    #
+    # Note: Garmin's course-service API requires OAuth consumer keys from the
+    # Garmin Developer Program, which isn't available through the unofficial
+    # session-based auth. upload_activity is the most reliable method available.
     try:
         with tempfile.NamedTemporaryFile(suffix=".gpx", delete=False) as tmp:
             tmp.write(gpx_bytes)
             tmp.flush()
             tmp_path = tmp.name
 
-        # Use the Garmin Connect course-service upload endpoint
-        # This is the same endpoint the Garmin Connect web app uses
-        # to create courses that appear in "Strecken" on the device
-        with open(tmp_path, "rb") as f:
-            files = {"data": (f"{route_name}.gpx", f, "application/octet-stream")}
-            upload_response = garmin_client.client.post(
-                "connectapi",
-                "/course-service/course/upload/.gpx",
-                files=files,
-                api=True,
-            )
+        upload_response = garmin_client.upload_activity(tmp_path)
     except Exception as exc:
         logger.error(
             "Garmin course upload failed for route %s, user %s: %s",
@@ -371,7 +369,6 @@ async def sync_route_to_garmin(
             detail=f"Failed to upload course to Garmin Connect: {exc}",
         ) from exc
     finally:
-        # Clean up temp file
         try:
             import os
             os.unlink(tmp_path)
@@ -402,17 +399,16 @@ async def sync_route_to_garmin(
 
 
 def _extract_course_id(upload_response: dict | list | None) -> int:
-    """Extract the Garmin course ID from the course-service upload response.
+    """Extract the Garmin activity/course ID from the upload response.
 
-    The course-service upload returns either:
-    - A list: [{"courseId": 12345, "courseName": "...", ...}]
-    - A dict: {"courseId": 12345, ...}
+    The garminconnect upload_activity returns a dict with
+    ``detailedImportResult.successes[0].internalId``.
     Falls back to 0 if the format is unexpected.
     """
     if not upload_response:
         return 0
 
-    # Course upload often returns a list of created courses
+    # Course-service list response
     if isinstance(upload_response, list) and upload_response:
         first = upload_response[0]
         if isinstance(first, dict):
@@ -421,12 +417,12 @@ def _extract_course_id(upload_response: dict | list | None) -> int:
                 return int(course_id)
 
     if isinstance(upload_response, dict):
-        # Direct courseId in response
+        # Course-service dict response
         course_id = upload_response.get("courseId")
         if course_id is not None:
             return int(course_id)
 
-        # Fallback: activity upload response format
+        # Activity upload response
         detailed = upload_response.get("detailedImportResult", {})
         successes = detailed.get("successes", [])
         if successes and isinstance(successes, list):
@@ -434,5 +430,10 @@ def _extract_course_id(upload_response: dict | list | None) -> int:
             internal_id = first.get("internalId")
             if internal_id is not None:
                 return int(internal_id)
+
+        # Top-level activityId
+        activity_id = upload_response.get("activityId")
+        if activity_id is not None:
+            return int(activity_id)
 
     return 0
