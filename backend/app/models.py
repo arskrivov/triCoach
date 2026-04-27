@@ -176,7 +176,6 @@ class WorkoutRow(BaseModel):
     plan_id: str | None = None
     plan_week: int | None = None
     plan_day: int | None = None
-    route_id: str | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -188,24 +187,3 @@ class ExerciseRow(BaseModel):
     muscle_groups: list[str] | None = None
     equipment: str | None = None
     is_custom: bool = False
-
-
-class RouteRow(BaseModel):
-    id: str = ""
-    user_id: str = ""
-    name: str = ""
-    sport: str = ""
-    start_lat: float = 0.0
-    start_lng: float = 0.0
-    end_lat: float | None = None
-    end_lng: float | None = None
-    is_loop: bool = True
-    distance_meters: float | None = None
-    elevation_gain_meters: float | None = None
-    elevation_loss_meters: float | None = None
-    estimated_duration_seconds: int | None = None
-    geojson: Any = None
-    gpx_data: str | None = None
-    garmin_course_id: int | None = None
-    surface_breakdown: Any = None
-    created_at: str = ""

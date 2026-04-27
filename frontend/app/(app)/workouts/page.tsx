@@ -725,19 +725,6 @@ export default function WorkoutsPage() {
                 </div>
               )}
 
-              {/* Route link for RUN / RIDE_ROAD / RIDE_GRAVEL */}
-              {["RUN", "RIDE_ROAD", "RIDE_GRAVEL"].includes(selectedWorkout.discipline) && (
-                <div className="pt-2 border-t border-border">
-                  <Link
-                    href={`/routes?workout_id=${selectedWorkout.id}&discipline=${selectedWorkout.discipline}&duration=${selectedWorkout.estimated_duration_seconds ?? ""}`}
-                    onClick={() => setSelectedWorkout(null)}
-                  >
-                    <Button variant="outline" size="sm" className="w-full">
-                      🗺️ Add Route
-                    </Button>
-                  </Link>
-                </div>
-              )}
             </div>
 
             <DialogFooter showCloseButton />

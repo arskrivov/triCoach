@@ -14,7 +14,6 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/workouts", label: "Workouts", icon: "🏋️" },
-  { href: "/routes", label: "Routes", icon: "🗺️" },
   { href: "/coach", label: "AI Coach", icon: "🤖" },
   { href: "/account", label: "Account", icon: "⚙️" },
 ];

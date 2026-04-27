@@ -58,6 +58,7 @@ export const SECTIONS: Section[] = [
         key: "mobility_sessions_per_week_target",
         label: "Mobility target",
         unit: "sessions/week",
+        hint: "How many mobility sessions per week you aim for (0–7)",
       },
     ],
   },

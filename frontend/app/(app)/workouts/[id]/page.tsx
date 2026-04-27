@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatDuration, getDisciplineMeta } from "@/lib/format";
 import type { Workout } from "@/lib/types";
-import { RouteSection } from "./route-section";
 
 export default function WorkoutDetailPage() {
   const params = useParams();
@@ -35,13 +34,6 @@ export default function WorkoutDetailPage() {
   useEffect(() => {
     fetchWorkout();
   }, [fetchWorkout]);
-
-  const handleRouteLinked = useCallback(
-    (_routeId: string | null) => {
-      fetchWorkout();
-    },
-    [fetchWorkout],
-  );
 
   if (loading) {
     return (
@@ -116,9 +108,6 @@ export default function WorkoutDetailPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Route section */}
-      <RouteSection workout={workout} onRouteLinked={handleRouteLinked} />
     </div>
   );
 }

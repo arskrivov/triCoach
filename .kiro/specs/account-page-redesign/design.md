@@ -198,7 +198,8 @@ const SECTIONS: Section[] = [
     label: "Training Preferences",
     fields: [
       { key: "weekly_training_hours", label: "Weekly training hours", unit: "h", hint: "How many hours per week you can train (3–30)" },
-      { key: "mobility_sessions_per_week_target", label: "Mobility target", unit: "sessions/week" },
+      { key: "mobility_sessions_per_week_target", label: "Mobility target", unit: "sessions/week",
+        hint: "How many sessions per week you can do mobility" },
     ],
   },
   {

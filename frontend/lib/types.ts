@@ -271,27 +271,6 @@ export interface PlanCompliance {
   weeks: WeekCompliance[];
 }
 
-// --- Routes ---
-
-export interface Route {
-  id: string;
-  name: string;
-  sport: Discipline;
-  start_lat: number;
-  start_lng: number;
-  end_lat: number | null;
-  end_lng: number | null;
-  is_loop: boolean;
-  distance_meters: number | null;
-  elevation_gain_meters: number | null;
-  elevation_loss_meters: number | null;
-  estimated_duration_seconds: number | null;
-  geojson: Record<string, unknown> | null;
-  gpx_data: string | null;
-  garmin_course_id: number | null;
-  surface_breakdown: Record<string, number> | null;
-}
-
 // --- Workouts ---
 
 export interface Workout {
@@ -307,29 +286,4 @@ export interface Workout {
   garmin_workout_id: number | null;
   is_template: boolean;
   scheduled_date: string | null;
-  route_id: string | null;
-  route: Route | null;
-}
-
-// --- Route Suggestions ---
-
-export interface RouteSuggestion {
-  id: string;
-  name: string;
-  distance_meters: number;
-  elevation_gain_meters: number | null;
-  popularity_score: number;
-  combined_score: number;
-  usage_count_90d: number;
-  surface_breakdown: Record<string, number> | null;
-  popularity_label: string | null;
-}
-
-// --- Workout Route Context ---
-
-export interface WorkoutRouteContext {
-  workoutId: string;
-  discipline: Discipline;
-  estimatedDuration: number;
-  suggestedDistanceMeters: number;
 }

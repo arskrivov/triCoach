@@ -20,7 +20,6 @@ from supabase import AsyncClient
 from garminconnect import Garmin
 
 from app.services.garmin import get_garmin_client
-from app.services.route_popularity import extract_and_store_segments
 
 logger = logging.getLogger(__name__)
 
@@ -497,37 +496,6 @@ async def sync_activities(
                 files_synced += len(batch)
         except APIError as exc:
             logger.warning("Skipping activity file persistence because activity_files write failed: %s", exc)
-
-    # --- Route popularity extraction ---
-    # Extract segments from endurance activities with GPS data for popularity tracking
-    total_segments_extracted = 0
-    for record in records:
-        if record.get("discipline") not in _ENDURANCE:
-            continue
-        activity_polyline = record.get("polyline")
-        if not activity_polyline:
-            continue
-        try:
-            segments_count = await extract_and_store_segments(
-                activity_id=str(record.get("garmin_activity_id", "")),
-                polyline=activity_polyline,
-                discipline=record["discipline"],
-                sb=sb,
-            )
-            total_segments_extracted += segments_count
-        except Exception as e:
-            logger.warning(
-                "Popularity extraction failed for activity %s: %s",
-                record.get("garmin_activity_id"),
-                e,
-            )
-    if total_segments_extracted > 0:
-        logger.info(
-            "Extracted %d route segments from %d activities for user %s",
-            total_segments_extracted,
-            len(records),
-            user_id,
-        )
 
     await sb.table("users").update({
         "garmin_last_sync_at": datetime.now(timezone.utc).isoformat(),
