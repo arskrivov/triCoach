@@ -30,4 +30,9 @@ async def overview(
     sb: AsyncClient = Depends(get_supabase),
     user_timezone: str | None = Header(default=None, alias="X-User-Timezone"),
 ):
-    return await build_dashboard_overview(current_user, sb, timezone_name=user_timezone)
+    return await build_dashboard_overview(
+        current_user,
+        sb,
+        timezone_name=user_timezone,
+        allow_briefing_generation=True,
+    )

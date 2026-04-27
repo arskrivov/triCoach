@@ -45,6 +45,23 @@ class SyncStatus(BaseModel):
     garmin_email: str | None
 
 
+def _is_garmin_session_expired(exc: Exception) -> bool:
+    """Check if the exception indicates an expired Garmin session."""
+    err_str = str(exc).lower()
+    return any(
+        phrase in err_str
+        for phrase in [
+            "invalid username-password",
+            "invalid user",
+            "unauthorized",
+            "401",
+            "session expired",
+            "not authenticated",
+            "authentication failed",
+        ]
+    )
+
+
 async def _run_sync(
     current_user: UserRow,
     sb: AsyncClient,
@@ -90,6 +107,11 @@ async def _run_sync(
         ) from exc
     except Exception as exc:
         logger.exception("Garmin sync failed for user %s", current_user.id)
+        if _is_garmin_session_expired(exc):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Garmin session expired — please reconnect your Garmin account in Settings.",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Garmin sync failed: {exc}",

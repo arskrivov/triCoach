@@ -66,13 +66,16 @@ def restore_client(session_data: dict) -> tuple[Garmin, bool]:
 
     Returns (client, token_was_refreshed). Callers should persist the new
     token store when token_was_refreshed is True.
+
+    Raises HTTPException(401) when the stored session is unrecoverable
+    (missing tokens, expired refresh token, invalid credentials).
     """
     client = Garmin()
     token_store = session_data.get("token_store") or session_data.get("garth_tokens")
     if not token_store:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Garmin session expired or invalid — please reconnect",
+            detail="Garmin session expired or invalid — please reconnect your Garmin account in Settings.",
         )
 
     client.client.loads(token_store)
@@ -82,8 +85,23 @@ def restore_client(session_data: dict) -> tuple[Garmin, bool]:
         and getattr(client.client, "_token_expires_soon", None)
         and client.client._token_expires_soon()
     ):
-        client.client._refresh_session()
-        refreshed = True
+        try:
+            client.client._refresh_session()
+            refreshed = True
+        except Exception as exc:
+            err_str = str(exc).lower()
+            if any(phrase in err_str for phrase in [
+                "invalid username-password",
+                "invalid user",
+                "unauthorized",
+                "401",
+                "not authenticated",
+            ]):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Garmin session expired — please reconnect your Garmin account in Settings.",
+                ) from exc
+            raise
 
     client.display_name = session_data.get("email") or ""
     return client, refreshed
