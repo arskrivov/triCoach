@@ -457,15 +457,19 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = [{"courseId": 55555, "courseName": "Morning Ride"}]
-        mock_garmin_client.client.request.return_value = mock_resp
+        mock_garmin_client.client.get_api_headers.return_value = {"Authorization": "Bearer test"}
+        mock_garmin_client.client.domain = "garmin.com"
 
         with patch(
             "app.services.garmin_course_sync.get_garmin_client",
             new_callable=AsyncMock,
             return_value=mock_garmin_client,
-        ):
+        ), patch("app.services.garmin_course_sync._requests") as mock_requests:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = [{"courseId": 55555, "courseName": "Morning Ride"}]
+            mock_requests.post.return_value = mock_resp
+
             result = await sync_route_to_garmin("route-uuid-1", "user-uuid-1", sb)
 
         assert isinstance(result, GarminCourseResult)
@@ -521,18 +525,16 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_garmin_client.client.request.side_effect = RuntimeError(
-            "Garmin Connect returned 503"
-        )
-        mock_garmin_client.upload_activity.side_effect = RuntimeError(
-            "Garmin Connect returned 503"
-        )
+        mock_garmin_client.client.get_api_headers.return_value = {"Authorization": "Bearer test"}
+        mock_garmin_client.client.domain = "garmin.com"
 
         with patch(
             "app.services.garmin_course_sync.get_garmin_client",
             new_callable=AsyncMock,
             return_value=mock_garmin_client,
-        ):
+        ), patch("app.services.garmin_course_sync._requests") as mock_requests:
+            mock_requests.post.side_effect = RuntimeError("Garmin Connect returned 503")
+
             with pytest.raises(HTTPException) as exc_info:
                 await sync_route_to_garmin("route-uuid-1", "user-uuid-1", sb)
 
@@ -545,9 +547,8 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = [{"courseId": 77777, "courseName": "Morning Ride"}]
-        mock_garmin_client.client.request.return_value = mock_resp
+        mock_garmin_client.client.get_api_headers.return_value = {"Authorization": "Bearer test"}
+        mock_garmin_client.client.domain = "garmin.com"
 
         # Capture the update chain mock before the call
         routes_table = sb.table("routes")
@@ -557,7 +558,12 @@ class TestSyncRouteToGarmin:
             "app.services.garmin_course_sync.get_garmin_client",
             new_callable=AsyncMock,
             return_value=mock_garmin_client,
-        ):
+        ), patch("app.services.garmin_course_sync._requests") as mock_requests:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = [{"courseId": 77777, "courseName": "Morning Ride"}]
+            mock_requests.post.return_value = mock_resp
+
             await sync_route_to_garmin("route-uuid-1", "user-uuid-1", sb)
 
         # Verify the update call was made with the correct garmin_course_id

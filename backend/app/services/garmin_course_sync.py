@@ -6,11 +6,13 @@ to Garmin Connect for turn-by-turn navigation on cycling workouts.
 
 import logging
 import math
+import os
 import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import requests as _requests
 from fastapi import HTTPException, status
 from supabase import AsyncClient
 
@@ -358,32 +360,47 @@ async def sync_route_to_garmin(
             detail=f"Failed to convert route to GPX: {exc}",
         ) from exc
 
-    # 4. Write GPX to a temp file and upload to Garmin Connect as a course
+    # 4. Upload GPX to Garmin Connect as a course
     #
-    # Use the Garmin Connect web proxy endpoint for course import.
-    # This is the same endpoint the Garmin Connect web UI uses at
-    # Training → Courses → Import. It goes through connect.garmin.com
-    # (not connectapi.garmin.com which is for activities).
+    # The course-service lives on connect.garmin.com, but the garminconnect
+    # library's client always routes to connectapi.garmin.com. We bypass the
+    # library's URL routing and make a direct authenticated request to the
+    # correct host.
     try:
+
         with tempfile.NamedTemporaryFile(suffix=".gpx", delete=False) as tmp:
             tmp.write(gpx_bytes)
             tmp.flush()
             tmp_path = tmp.name
 
+        # Get authenticated headers from the garmin client
+        headers = garmin_client.client.get_api_headers()
+
+        connect_base = f"https://connect.garmin.{garmin_client.client.domain}"
+        url = f"{connect_base}/course-service/course/upload/.gpx"
+
         with open(tmp_path, "rb") as f:
             files = {"data": (f"{route_name}.gpx", f, "application/octet-stream")}
-            # POST to connect.garmin.com/course-service/course/upload/.gpx
-            resp = garmin_client.client.request(
-                "POST",
-                "connect",
-                "/course-service/course/upload/.gpx",
-                files=files,
+            resp = _requests.post(url, headers=headers, files=files, timeout=30)
+
+        if resp.status_code >= 400:
+            logger.error(
+                "Garmin course upload returned %d: %s",
+                resp.status_code,
+                resp.text[:500],
             )
-            # Parse response
-            if hasattr(resp, "json"):
-                upload_response = resp.json()
-            else:
-                upload_response = None
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Garmin returned {resp.status_code}: {resp.text[:200]}",
+            )
+
+        try:
+            upload_response = resp.json()
+        except Exception:
+            upload_response = None
+
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(
             "Garmin course upload failed for route %s, user %s: %s",
@@ -397,7 +414,6 @@ async def sync_route_to_garmin(
         ) from exc
     finally:
         try:
-            import os
             os.unlink(tmp_path)
         except OSError:
             pass
