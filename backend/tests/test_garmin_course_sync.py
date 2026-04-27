@@ -457,11 +457,9 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_garmin_client.upload_activity.return_value = {
-            "detailedImportResult": {
-                "successes": [{"internalId": 55555}],
-            }
-        }
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [{"courseId": 55555, "courseName": "Morning Ride"}]
+        mock_garmin_client.client.request.return_value = mock_resp
 
         with patch(
             "app.services.garmin_course_sync.get_garmin_client",
@@ -523,7 +521,7 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_garmin_client.client.post.side_effect = RuntimeError(
+        mock_garmin_client.client.request.side_effect = RuntimeError(
             "Garmin Connect returned 503"
         )
         mock_garmin_client.upload_activity.side_effect = RuntimeError(
@@ -547,11 +545,9 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_garmin_client.upload_activity.return_value = {
-            "detailedImportResult": {
-                "successes": [{"internalId": 77777}],
-            }
-        }
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [{"courseId": 77777, "courseName": "Morning Ride"}]
+        mock_garmin_client.client.request.return_value = mock_resp
 
         # Capture the update chain mock before the call
         routes_table = sb.table("routes")

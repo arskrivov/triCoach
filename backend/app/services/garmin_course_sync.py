@@ -360,20 +360,30 @@ async def sync_route_to_garmin(
 
     # 4. Write GPX to a temp file and upload to Garmin Connect as a course
     #
-    # Strategy: Use upload_activity (which reliably works with the garminconnect
-    # library) to upload the GPX file. This creates it as an activity in Garmin
-    # Connect. The GPX contains route/track data that Garmin can use.
-    #
-    # Note: Garmin's course-service API requires OAuth consumer keys from the
-    # Garmin Developer Program, which isn't available through the unofficial
-    # session-based auth. upload_activity is the most reliable method available.
+    # Use the Garmin Connect web proxy endpoint for course import.
+    # This is the same endpoint the Garmin Connect web UI uses at
+    # Training → Courses → Import. It goes through connect.garmin.com
+    # (not connectapi.garmin.com which is for activities).
     try:
         with tempfile.NamedTemporaryFile(suffix=".gpx", delete=False) as tmp:
             tmp.write(gpx_bytes)
             tmp.flush()
             tmp_path = tmp.name
 
-        upload_response = garmin_client.upload_activity(tmp_path)
+        with open(tmp_path, "rb") as f:
+            files = {"data": (f"{route_name}.gpx", f, "application/octet-stream")}
+            # POST to connect.garmin.com/course-service/course/upload/.gpx
+            resp = garmin_client.client.request(
+                "POST",
+                "connect",
+                "/course-service/course/upload/.gpx",
+                files=files,
+            )
+            # Parse response
+            if hasattr(resp, "json"):
+                upload_response = resp.json()
+            else:
+                upload_response = None
     except Exception as exc:
         logger.error(
             "Garmin course upload failed for route %s, user %s: %s",
