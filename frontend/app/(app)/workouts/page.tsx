@@ -515,10 +515,19 @@ export default function WorkoutsPage() {
               const dayWorkouts = dayWorkoutsMap[dayIndex] ?? [];
               const isRestDay = dayWorkouts.length === 0;
 
+              // Compute the actual calendar date for this column
+              const weekStartDate = new Date(activePlan.start_date);
+              weekStartDate.setDate(weekStartDate.getDate() + (currentWeek - 1) * 7 + dayIndex);
+              const dayDate = weekStartDate.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+              const isColumnToday = weekStartDate.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10);
+
               return (
                 <div key={dayIndex} className="min-w-0">
-                  <p className="text-[10px] font-medium text-muted-foreground text-center mb-1.5 uppercase tracking-wider">
+                  <p className={`text-[10px] font-medium text-center mb-1.5 uppercase tracking-wider ${isColumnToday ? "text-primary" : "text-muted-foreground"}`}>
                     {label}
+                  </p>
+                  <p className={`text-[10px] text-center mb-1.5 ${isColumnToday ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                    {dayDate}
                   </p>
                   {isRestDay ? (
                     <div className="rounded-xl border border-dashed border-border bg-muted/20 p-3 min-h-[120px] flex items-center justify-center">
@@ -681,6 +690,20 @@ export default function WorkoutsPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Coaching Notes</p>
                   <p className="text-sm text-foreground">{selectedWorkout.content?.notes ?? selectedWorkout.description}</p>
+                </div>
+              )}
+
+              {/* Route link for RUN / RIDE_ROAD / RIDE_GRAVEL */}
+              {["RUN", "RIDE_ROAD", "RIDE_GRAVEL"].includes(selectedWorkout.discipline) && (
+                <div className="pt-2 border-t border-border">
+                  <Link
+                    href={`/routes?workout_id=${selectedWorkout.id}&discipline=${selectedWorkout.discipline}&duration=${selectedWorkout.estimated_duration_seconds ?? ""}`}
+                    onClick={() => setSelectedWorkout(null)}
+                  >
+                    <Button variant="outline" size="sm" className="w-full">
+                      🗺️ Add Route
+                    </Button>
+                  </Link>
                 </div>
               )}
             </div>

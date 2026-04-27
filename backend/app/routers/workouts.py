@@ -8,6 +8,7 @@ from supabase import AsyncClient
 
 from app.database import get_supabase
 from app.models import UserRow
+from app.routers.routes import RouteResponse
 from app.services.auth import get_current_user
 from app.services.garmin_workout_sync import (
     delete_workout_from_garmin,
@@ -42,6 +43,7 @@ class WorkoutUpdate(BaseModel):
     estimated_volume_kg: float | None = None
     is_template: bool | None = None
     scheduled_date: str | None = None
+    route_id: str | None = None
 
 
 class WorkoutResponse(BaseModel):
@@ -57,6 +59,8 @@ class WorkoutResponse(BaseModel):
     garmin_workout_id: int | None
     is_template: bool
     scheduled_date: str | None
+    route_id: str | None = None
+    route: RouteResponse | None = None
 
 
 class ExerciseCreate(BaseModel):
@@ -142,6 +146,13 @@ async def get_workout(
     if not res.data:
         raise HTTPException(status_code=404, detail="Workout not found")
     row = res.data[0]
+
+    # Fetch linked route data if the workout has a route_id
+    if row.get("route_id"):
+        route_res = await sb.table("routes").select("*").eq("id", row["route_id"]).limit(1).execute()
+        if route_res.data:
+            row["route"] = route_res.data[0]
+
     return row
 
 
@@ -207,6 +218,71 @@ async def delete_workout(
             logger.warning("Garmin delete failed for workout %s: %s", workout_id, exc)
 
     await sb.table("workouts").delete().eq("id", workout_id).execute()
+
+
+# ── Route linking ─────────────────────────────────────────────────────────────
+
+ROUTE_DISCIPLINES = {"RUN", "RIDE_ROAD", "RIDE_GRAVEL"}
+
+
+class LinkRouteRequest(BaseModel):
+    route_id: str
+
+
+@router.put("/{workout_id}/route", response_model=WorkoutResponse)
+async def link_route(
+    workout_id: str,
+    body: LinkRouteRequest,
+    current_user: UserRow = Depends(get_current_user),
+    sb: AsyncClient = Depends(get_supabase),
+):
+    """Link a route to a workout."""
+    # Fetch the workout and verify ownership
+    workout_res = await sb.table("workouts").select("*").eq("id", workout_id).eq(
+        "user_id", current_user.id
+    ).limit(1).execute()
+    if not workout_res.data:
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    workout = workout_res.data[0]
+
+    # Validate discipline allows route linking
+    if workout["discipline"] not in ROUTE_DISCIPLINES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Route linking is only available for {', '.join(sorted(ROUTE_DISCIPLINES))} disciplines",
+        )
+
+    # Verify the route exists and belongs to the user
+    route_res = await sb.table("routes").select("id").eq("id", body.route_id).eq(
+        "user_id", current_user.id
+    ).limit(1).execute()
+    if not route_res.data:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    # Link the route to the workout
+    res = await sb.table("workouts").update({"route_id": body.route_id}).eq(
+        "id", workout_id
+    ).execute()
+    return res.data[0]
+
+
+@router.delete("/{workout_id}/route", status_code=status.HTTP_204_NO_CONTENT)
+async def unlink_route(
+    workout_id: str,
+    current_user: UserRow = Depends(get_current_user),
+    sb: AsyncClient = Depends(get_supabase),
+):
+    """Remove route link from a workout."""
+    # Fetch the workout and verify ownership
+    workout_res = await sb.table("workouts").select("id").eq("id", workout_id).eq(
+        "user_id", current_user.id
+    ).limit(1).execute()
+    if not workout_res.data:
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    # Set route_id to null
+    await sb.table("workouts").update({"route_id": None}).eq("id", workout_id).execute()
 
 
 # ── Exercise library ──────────────────────────────────────────────────────────
