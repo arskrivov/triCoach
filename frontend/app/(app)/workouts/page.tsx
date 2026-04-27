@@ -654,11 +654,18 @@ export default function WorkoutsPage() {
                 </div>
               )}
 
-              {selectedWorkout.content?.main && Array.isArray(selectedWorkout.content.main) && selectedWorkout.content.main.length > 0 && (
+              {(() => {
+                const rawMain = selectedWorkout.content?.main;
+                const mainSets: WorkoutSegment[] = Array.isArray(rawMain)
+                  ? rawMain
+                  : rawMain && typeof rawMain === "object"
+                    ? [rawMain as WorkoutSegment]
+                    : [];
+                return mainSets.length > 0 ? (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Main Set</p>
                   <div className="space-y-1.5">
-                    {selectedWorkout.content.main.map((seg, i) => (
+                    {mainSets.map((seg, i) => (
                       <div key={i} className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
                         {seg.description && <p>{seg.description}</p>}
                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -671,7 +678,8 @@ export default function WorkoutsPage() {
                     ))}
                   </div>
                 </div>
-              )}
+                ) : null;
+              })()}
 
               {selectedWorkout.content?.cooldown && (
                 <div>
