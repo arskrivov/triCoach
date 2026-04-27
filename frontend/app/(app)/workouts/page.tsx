@@ -38,9 +38,9 @@ interface PlanWorkoutResponse {
 
 interface WorkoutContent {
   type?: string;
-  warmup?: WorkoutSegment;
-  main?: WorkoutSegment[];
-  cooldown?: WorkoutSegment;
+  warmup?: WorkoutSegment | string;
+  main?: WorkoutSegment[] | WorkoutSegment | string[] | string;
+  cooldown?: WorkoutSegment | string;
   target_tss?: number;
   target_hr_zone?: string;
   notes?: string;
@@ -645,22 +645,36 @@ export default function WorkoutsPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Warmup</p>
                   <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
-                    {selectedWorkout.content.warmup.description && <p>{selectedWorkout.content.warmup.description}</p>}
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {selectedWorkout.content.warmup.duration_min}min
-                      {selectedWorkout.content.warmup.zone && <span> · {selectedWorkout.content.warmup.zone}</span>}
-                    </p>
+                    {typeof selectedWorkout.content.warmup === "string" ? (
+                      <p>{selectedWorkout.content.warmup}</p>
+                    ) : (
+                      <>
+                        {selectedWorkout.content.warmup.description && <p>{selectedWorkout.content.warmup.description}</p>}
+                        {(selectedWorkout.content.warmup.duration_min || selectedWorkout.content.warmup.zone) && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {selectedWorkout.content.warmup.duration_min && <span>{selectedWorkout.content.warmup.duration_min}min</span>}
+                            {selectedWorkout.content.warmup.zone && <span> · {selectedWorkout.content.warmup.zone}</span>}
+                          </p>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               )}
 
               {(() => {
                 const rawMain = selectedWorkout.content?.main;
-                const mainSets: WorkoutSegment[] = Array.isArray(rawMain)
-                  ? rawMain
-                  : rawMain && typeof rawMain === "object"
-                    ? [rawMain as WorkoutSegment]
-                    : [];
+                // Normalize: string → [{description: string}], object → [object], array of strings → [{description}], array of objects → as-is
+                let mainSets: WorkoutSegment[] = [];
+                if (Array.isArray(rawMain)) {
+                  mainSets = rawMain.map((item) =>
+                    typeof item === "string" ? { description: item } as WorkoutSegment : item as WorkoutSegment
+                  );
+                } else if (typeof rawMain === "string") {
+                  mainSets = [{ description: rawMain } as WorkoutSegment];
+                } else if (rawMain && typeof rawMain === "object") {
+                  mainSets = [rawMain as WorkoutSegment];
+                }
                 return mainSets.length > 0 ? (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Main Set</p>
@@ -668,12 +682,14 @@ export default function WorkoutsPage() {
                     {mainSets.map((seg, i) => (
                       <div key={i} className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
                         {seg.description && <p>{seg.description}</p>}
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {seg.duration_min}min
-                          {seg.zone && <span> · {seg.zone}</span>}
-                          {seg.repeats && seg.repeats > 1 && <span> · {seg.repeats}× reps</span>}
-                          {seg.rest_min && <span> · {seg.rest_min}min rest</span>}
-                        </p>
+                        {(seg.duration_min || seg.zone || seg.repeats || seg.rest_min) && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {seg.duration_min && <span>{seg.duration_min}min</span>}
+                            {seg.zone && <span> · {seg.zone}</span>}
+                            {seg.repeats && seg.repeats > 1 && <span> · {seg.repeats}× reps</span>}
+                            {seg.rest_min && <span> · {seg.rest_min}min rest</span>}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -685,11 +701,19 @@ export default function WorkoutsPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Cooldown</p>
                   <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
-                    {selectedWorkout.content.cooldown.description && <p>{selectedWorkout.content.cooldown.description}</p>}
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {selectedWorkout.content.cooldown.duration_min}min
-                      {selectedWorkout.content.cooldown.zone && <span> · {selectedWorkout.content.cooldown.zone}</span>}
-                    </p>
+                    {typeof selectedWorkout.content.cooldown === "string" ? (
+                      <p>{selectedWorkout.content.cooldown}</p>
+                    ) : (
+                      <>
+                        {selectedWorkout.content.cooldown.description && <p>{selectedWorkout.content.cooldown.description}</p>}
+                        {(selectedWorkout.content.cooldown.duration_min || selectedWorkout.content.cooldown.zone) && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {selectedWorkout.content.cooldown.duration_min && <span>{selectedWorkout.content.cooldown.duration_min}min</span>}
+                            {selectedWorkout.content.cooldown.zone && <span> · {selectedWorkout.content.cooldown.zone}</span>}
+                          </p>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               )}

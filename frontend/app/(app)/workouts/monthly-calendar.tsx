@@ -19,9 +19,9 @@ import {
 
 interface WorkoutContent {
   type?: string;
-  warmup?: WorkoutSegment;
-  main?: WorkoutSegment[];
-  cooldown?: WorkoutSegment;
+  warmup?: WorkoutSegment | string;
+  main?: WorkoutSegment[] | WorkoutSegment | string[] | string;
+  cooldown?: WorkoutSegment | string;
   target_tss?: number;
   target_hr_zone?: string;
   notes?: string;

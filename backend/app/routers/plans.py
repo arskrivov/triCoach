@@ -702,13 +702,13 @@ async def enrich_week_workouts(
             f'"estimated_tss": {w.get("estimated_tss") or 0}}}'
         )
 
-    prompt = f"""Generate detailed, specific, actionable workout content for each workout below.
-You are an elite performance coach writing programs that an athlete can follow rep-by-rep.
+    prompt = f"""Generate detailed, specific, actionable workout programs for each workout below.
 
+CONTEXT:
 Plan: {plan.name}
 Week {week_number} — {current_phase} phase
 Phase focus: {phase_focus}
-Athlete: {', '.join(profile_context) if profile_context else 'No threshold data'}
+Athlete thresholds: {', '.join(profile_context) if profile_context else 'No threshold data available'}
 Races: {chr(10).join(race_context) if race_context else 'None'}
 
 Workouts to enrich:
@@ -716,47 +716,70 @@ Workouts to enrich:
 {chr(10).join(workout_list)}
 ]
 
-For EACH workout, generate a JSON object with:
-- "id": the workout ID (copy from above)
-- "content": structured workout with warmup, main, cooldown, target_tss, target_hr_zone, notes
-- "description": one-sentence summary
+STRICT OUTPUT SCHEMA — every workout MUST follow this exact JSON structure:
 
-CRITICAL RULES FOR CONTENT QUALITY:
+{{
+  "id": "<copy workout id from above>",
+  "description": "<one sentence summary>",
+  "content": {{
+    "type": "<easy|tempo|intervals|threshold|strength|mobility|recovery>",
+    "target_tss": <number>,
+    "target_hr_zone": "<Z1|Z2|Z3|Z4|Z5|N/A>",
+    "warmup": {{
+      "duration_min": <number>,
+      "zone": "<zone string>",
+      "description": "<specific warmup instructions>"
+    }},
+    "main": [
+      {{
+        "duration_min": <number>,
+        "zone": "<zone string>",
+        "description": "<specific exercise or interval description>"
+      }}
+    ],
+    "cooldown": {{
+      "duration_min": <number>,
+      "zone": "<zone string>",
+      "description": "<specific cooldown instructions>"
+    }},
+    "notes": "<coaching cues and rationale>"
+  }}
+}}
 
-STRENGTH workouts — be SPECIFIC with exercises, sets, reps, and load:
-- Each main set entry = ONE exercise with sets × reps, load (% 1RM or RPE), and rest period.
-- Use the athlete's 1RM values if available to calculate working weights.
-- Example main set entries:
-  {{"duration_min": 10, "description": "3x8 Back Squat @ 70% 1RM, 90s rest", "zone": "Strength"}}
-  {{"duration_min": 10, "description": "3x8 Deadlifts @ 70% 1RM, 90s rest", "zone": "Strength"}}
-  {{"duration_min": 8, "description": "3x10 Dumbbell Shoulder Press, moderate load, 60s rest", "zone": "Strength"}}
-- NEVER write vague descriptions like "Core & legs focus" or "Upper body work". Always name the specific exercises.
-- Include 3-5 exercises per strength session.
+MANDATORY FORMAT RULES:
+- "warmup" MUST be an object with duration_min, zone, description. NEVER a string.
+- "main" MUST be an array of objects. NEVER a string, NEVER a single object. Always an array.
+- "cooldown" MUST be an object with duration_min, zone, description. NEVER a string.
+- Each main set entry MUST have duration_min (number), zone (string), description (string).
+- Every field must be present. No nulls, no omissions.
 
-SWIM workouts — be SPECIFIC with distances, intervals, and paces:
-- Use the athlete's CSS pace if available.
-- Example: "4x200m @ CSS pace, 20s rest" or "8x50m sprint @ max effort, 30s rest"
-- Include total distance in the description.
+CONTENT QUALITY RULES:
 
-RUN workouts — be SPECIFIC with paces and intervals:
-- Use the athlete's threshold pace if available.
-- For easy runs: "Steady Z2 at threshold_pace + 60s/km"
-- For intervals: "5x1000m @ threshold pace, 90s jog rest"
-- For tempo: "20min continuous at threshold pace"
+STRENGTH — name specific exercises with sets, reps, load, rest:
+  main: [
+    {{"duration_min": 10, "zone": "Strength", "description": "3x8 Back Squat @ 70% 1RM, 90s rest"}},
+    {{"duration_min": 10, "zone": "Strength", "description": "3x8 Romanian Deadlift @ 65% 1RM, 90s rest"}},
+    {{"duration_min": 8, "zone": "Strength", "description": "3x10 DB Shoulder Press, moderate load, 60s rest"}}
+  ]
+  NEVER write "Core & legs focus" or "Upper body work". Always name the exercise.
 
-RIDE workouts — be SPECIFIC with power targets and intervals:
-- Use the athlete's FTP if available.
-- For endurance: "Steady Z2 at 65-75% FTP"
-- For intervals: "4x8min @ 95-100% FTP, 4min easy spin"
-- For sweet spot: "2x20min @ 88-93% FTP, 5min recovery"
+RUN — specify pace, distance, or intervals:
+  main: [
+    {{"duration_min": 30, "zone": "Z2", "description": "Steady run at 5:30-5:45/km, conversational pace"}},
+    {{"duration_min": 8, "zone": "Z4", "description": "6x20s strides at 4:15/km with 40s walk recovery"}}
+  ]
 
-YOGA/MOBILITY — describe specific poses or stretches, hold times.
+RIDE — specify power or HR targets:
+  main: [{{"duration_min": 45, "zone": "Z2", "description": "Steady endurance ride at 65-75% FTP (150-175W)"}}]
 
-Warmup and cooldown should also be specific (e.g., "5min easy jog building to Z2" not just "warmup").
-Notes should give coaching cues relevant to the phase and athlete.
+SWIM — specify distances and intervals:
+  main: [{{"duration_min": 20, "zone": "Z3", "description": "8x100m @ CSS pace (1:45/100m), 15s rest"}}]
 
-Return a JSON array of objects. Valid JSON only, no markdown fences.
-Example: [{{"id": "abc", "content": {{...}}, "description": "..."}}]"""
+YOGA/MOBILITY — name specific poses/stretches with hold times:
+  main: [{{"duration_min": 5, "zone": "Stretch", "description": "Pigeon pose 90s each side, lizard pose 60s each side"}}]
+
+Return a JSON array. Valid JSON only, no markdown fences, no text outside the array.
+"""
 
     try:
         from openai import OpenAI
@@ -784,6 +807,54 @@ Example: [{{"id": "abc", "content": {{...}}, "description": "..."}}]"""
     except Exception as exc:
         logger.error("AI enrichment failed: %s", exc)
         raise HTTPException(status_code=503, detail="AI enrichment failed. Try again.") from exc
+
+    # Normalize content structure to guarantee consistent format in DB
+    def _normalize_segment(seg: Any) -> dict:
+        """Ensure a warmup/cooldown segment is always a dict with required keys."""
+        if isinstance(seg, str):
+            return {"duration_min": 0, "zone": "", "description": seg}
+        if isinstance(seg, dict):
+            return {
+                "duration_min": seg.get("duration_min", 0),
+                "zone": seg.get("zone", ""),
+                "description": seg.get("description", ""),
+            }
+        return {"duration_min": 0, "zone": "", "description": str(seg)}
+
+    def _normalize_main(main: Any) -> list[dict]:
+        """Ensure main is always a list of dicts."""
+        if isinstance(main, list):
+            return [_normalize_segment(item) for item in main]
+        if isinstance(main, str):
+            return [{"duration_min": 0, "zone": "", "description": main}]
+        if isinstance(main, dict):
+            return [_normalize_segment(main)]
+        return []
+
+    def _normalize_content(content: Any) -> dict:
+        """Normalize the full content object."""
+        if not isinstance(content, dict):
+            return {}
+        normalized: dict[str, Any] = {}
+        if "type" in content:
+            normalized["type"] = content["type"]
+        if "target_tss" in content:
+            normalized["target_tss"] = content["target_tss"]
+        if "target_hr_zone" in content:
+            normalized["target_hr_zone"] = content["target_hr_zone"]
+        if "warmup" in content and content["warmup"]:
+            normalized["warmup"] = _normalize_segment(content["warmup"])
+        if "main" in content and content["main"]:
+            normalized["main"] = _normalize_main(content["main"])
+        if "cooldown" in content and content["cooldown"]:
+            normalized["cooldown"] = _normalize_segment(content["cooldown"])
+        if "notes" in content:
+            normalized["notes"] = str(content["notes"]) if content["notes"] else ""
+        return normalized
+
+    for enrichment in enrichments:
+        if isinstance(enrichment, dict) and "content" in enrichment:
+            enrichment["content"] = _normalize_content(enrichment["content"])
 
     # Apply enrichments to the database
     now = datetime.now(timezone.utc).isoformat()
