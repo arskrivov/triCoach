@@ -327,7 +327,12 @@ class TestExtractCourseId:
     """Tests for _extract_course_id helper – Requirements 4.1, 4.2."""
 
     def test_course_service_response(self):
-        """Course-service API response with courseId."""
+        """Course-service upload returns a list with courseId."""
+        response = [{"courseId": 12345678, "courseName": "My Course"}]
+        assert _extract_course_id(response) == 12345678
+
+    def test_course_service_dict_response(self):
+        """Course-service may also return a dict with courseId."""
         response = {"courseId": 12345678, "courseName": "My Course"}
         assert _extract_course_id(response) == 12345678
 
@@ -339,11 +344,6 @@ class TestExtractCourseId:
             }
         }
         assert _extract_course_id(response) == 12345678
-
-    def test_fallback_to_activity_id(self):
-        """Response with top-level activityId but no detailedImportResult."""
-        response = {"activityId": 99887766}
-        assert _extract_course_id(response) == 99887766
 
     def test_none_response_returns_zero(self):
         assert _extract_course_id(None) == 0
@@ -457,10 +457,9 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_garmin_client.client.post.return_value = {
-            "courseId": 55555,
-            "courseName": "Morning Ride",
-        }
+        mock_garmin_client.client.post.return_value = [
+            {"courseId": 55555, "courseName": "Morning Ride"},
+        ]
 
         with patch(
             "app.services.garmin_course_sync.get_garmin_client",
@@ -543,10 +542,9 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_garmin_client.client.post.return_value = {
-            "courseId": 77777,
-            "courseName": "Morning Ride",
-        }
+        mock_garmin_client.client.post.return_value = [
+            {"courseId": 77777, "courseName": "Morning Ride"},
+        ]
 
         # Capture the update chain mock before the call
         routes_table = sb.table("routes")

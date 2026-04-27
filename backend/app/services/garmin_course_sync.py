@@ -348,13 +348,14 @@ async def sync_route_to_garmin(
             tmp.flush()
             tmp_path = tmp.name
 
-        # Use the Garmin Connect course-service API to create a course
-        # (not upload_activity, which creates an activity instead of a course)
+        # Use the Garmin Connect course-service upload endpoint
+        # This is the same endpoint the Garmin Connect web app uses
+        # to create courses that appear in "Strecken" on the device
         with open(tmp_path, "rb") as f:
-            files = {"file": (f"{route_name}.gpx", f, "application/gpx+xml")}
+            files = {"data": (f"{route_name}.gpx", f, "application/octet-stream")}
             upload_response = garmin_client.client.post(
                 "connectapi",
-                "/course-service/course",
+                "/course-service/course/upload/.gpx",
                 files=files,
                 api=True,
             )
@@ -401,17 +402,26 @@ async def sync_route_to_garmin(
 
 
 def _extract_course_id(upload_response: dict | list | None) -> int:
-    """Extract the Garmin course ID from the course-service response.
+    """Extract the Garmin course ID from the course-service upload response.
 
-    The course-service API returns a dict with ``courseId`` for the created course.
-    Falls back to checking ``detailedImportResult`` (activity upload format)
-    and then a sentinel value of 0.
+    The course-service upload returns either:
+    - A list: [{"courseId": 12345, "courseName": "...", ...}]
+    - A dict: {"courseId": 12345, ...}
+    Falls back to 0 if the format is unexpected.
     """
     if not upload_response:
         return 0
 
+    # Course upload often returns a list of created courses
+    if isinstance(upload_response, list) and upload_response:
+        first = upload_response[0]
+        if isinstance(first, dict):
+            course_id = first.get("courseId")
+            if course_id is not None:
+                return int(course_id)
+
     if isinstance(upload_response, dict):
-        # Course-service response: {"courseId": 12345, "courseName": "...", ...}
+        # Direct courseId in response
         course_id = upload_response.get("courseId")
         if course_id is not None:
             return int(course_id)
@@ -424,10 +434,5 @@ def _extract_course_id(upload_response: dict | list | None) -> int:
             internal_id = first.get("internalId")
             if internal_id is not None:
                 return int(internal_id)
-
-        # Fallback: top-level activityId
-        activity_id = upload_response.get("activityId")
-        if activity_id is not None:
-            return int(activity_id)
 
     return 0
