@@ -376,7 +376,7 @@ async def sync_route_to_garmin(
         # Get authenticated headers from the garmin client
         headers = garmin_client.client.get_api_headers()
 
-        connect_base = f"https://connect.garmin.{garmin_client.client.domain}"
+        connect_base = f"https://connect.{garmin_client.client.domain}"
         url = f"{connect_base}/course-service/course/upload/.gpx"
 
         with open(tmp_path, "rb") as f:
@@ -402,6 +402,8 @@ async def sync_route_to_garmin(
     except HTTPException:
         raise
     except Exception as exc:
+        import traceback
+        traceback.print_exc()
         logger.error(
             "Garmin course upload failed for route %s, user %s: %s",
             route_id,
