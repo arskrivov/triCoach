@@ -231,9 +231,14 @@ async def chat(
 
             pending_tool_calls: list[dict] = []
             current_tool_call: dict | None = None
+            response_id: str | None = None
 
             for event in response:
                 event_type = getattr(event, "type", None)
+
+                if event_type == "response.created":
+                    created_response = getattr(event, "response", None)
+                    response_id = getattr(created_response, "id", None)
 
                 # Stream text tokens
                 if event_type == "response.output_text.delta":
@@ -284,22 +289,26 @@ async def chat(
                     yield f"data: {_json.dumps({'token': status_msg})}\n\n"
 
                 # Second call — let the model respond to the tool results
-                try:
-                    followup = client.responses.create(
-                        model=settings.openai_coach_model,
-                        instructions=system_text,
-                        input=messages + tool_outputs,
-                        max_output_tokens=1024,
-                        stream=True,
-                    )
-                    for event in followup:
-                        if getattr(event, "type", None) == "response.output_text.delta":
-                            text = getattr(event, "delta", "")
-                            if text:
-                                collected.append(text)
-                                yield f"data: {_json.dumps({'token': text})}\n\n"
-                except Exception as exc:
-                    _logger.error("Coach followup after tools failed: %s", exc)
+                if not response_id:
+                    _logger.error("Coach followup after tools skipped: missing initial response id")
+                else:
+                    try:
+                        followup = client.responses.create(
+                            model=settings.openai_coach_model,
+                            instructions=system_text,
+                            previous_response_id=response_id,
+                            input=tool_outputs,
+                            max_output_tokens=1024,
+                            stream=True,
+                        )
+                        for event in followup:
+                            if getattr(event, "type", None) == "response.output_text.delta":
+                                text = getattr(event, "delta", "")
+                                if text:
+                                    collected.append(text)
+                                    yield f"data: {_json.dumps({'token': text})}\n\n"
+                    except Exception as exc:
+                        _logger.error("Coach followup after tools failed: %s", exc)
 
         except Exception as exc:
             _logger.error("Coach chat stream error: %s", exc)
