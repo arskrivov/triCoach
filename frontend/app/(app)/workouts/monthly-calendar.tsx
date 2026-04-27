@@ -48,6 +48,9 @@ export interface PlanWorkoutResponse {
   plan_week: number | null;
   plan_day: number | null;
   garmin_workout_id: number | null;
+  completed_by_activity_id: string | null;
+  completed_by_activity_name: string | null;
+  completed_by_activity_start_time: string | null;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -64,6 +67,16 @@ const DISCIPLINE_ICONS: Record<string, string> = {
 };
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+type WorkoutStatus = "completed" | "today" | "skipped" | "upcoming";
+
+function getWorkoutStatus(workout: PlanWorkoutResponse): WorkoutStatus {
+  if (workout.completed_by_activity_id) return "completed";
+  if (workout.content?.type === "skipped") return "skipped";
+  if (workout.scheduled_date && isDateToday(workout.scheduled_date)) return "today";
+  if (workout.scheduled_date && isDatePast(workout.scheduled_date)) return "skipped";
+  return "upcoming";
+}
 
 // ── MonthNavigator ───────────────────────────────────────────────────────────
 
@@ -152,6 +165,7 @@ function CalendarCell({
             ? `${Math.round(workout.estimated_tss)} TSS`
             : null;
         const parts = [duration, tss].filter(Boolean).join(" · ");
+        const status = getWorkoutStatus(workout);
 
         return (
           <button
@@ -160,11 +174,23 @@ function CalendarCell({
             onClick={() => onWorkoutClick(workout)}
             className={cn(
               "mt-0.5 flex w-full items-center gap-0.5 truncate rounded px-1 text-left text-[10px] leading-tight hover:bg-muted",
-              past && "opacity-60"
+              status === "completed" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+              status === "skipped" && "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+              status === "today" && "bg-primary/10 text-primary",
+              past && status !== "completed" && "opacity-70"
             )}
+            title={
+              status === "completed"
+                ? "Completed"
+                : status === "skipped"
+                  ? "Skipped"
+                  : undefined
+            }
           >
             <span>{icon}</span>
             {parts && <span>{parts}</span>}
+            {status === "completed" && <span className="ml-auto text-emerald-600">✓</span>}
+            {status === "skipped" && <span className="ml-auto text-amber-600">!</span>}
           </button>
         );
       })}

@@ -6,6 +6,7 @@ from supabase import AsyncClient
 
 from app.models import ActivityRow, DailyHealthRow, GoalRow, TrainingPlanRow, WorkoutRow
 from app.services.athlete_profile import get_effective_athlete_profile
+from app.services.workout_matching import match_workouts_to_activities
 
 
 def _fmt_pace(sec_per_km: float | None) -> str:
@@ -85,6 +86,15 @@ async def _build_active_plan_section(user_id: str, sb: AsyncClient, today: date)
     # Calculate this week's date range (Mon–Sun)
     week_start = plan_start + timedelta(weeks=current_week - 1)
     week_end = week_start + timedelta(days=6)
+    activity_range_end = min(week_end, today) + timedelta(days=1)
+    activities_res = await sb.table("activities").select("*").eq(
+        "user_id", user_id
+    ).gte(
+        "start_time", (week_start - timedelta(days=1)).isoformat()
+    ).lte(
+        "start_time", activity_range_end.isoformat() + "T23:59:59Z"
+    ).order("start_time", desc=False).execute()
+    workout_matches = match_workouts_to_activities(workouts, activities_res.data or [])
 
     # Build the section
     lines = ["## Active Training Plan"]
@@ -101,27 +111,44 @@ async def _build_active_plan_section(user_id: str, sb: AsyncClient, today: date)
         lines.append("")
         lines.append("### This Week's Workouts")
         lines.append("Use the workout_id (UUID) when calling tools to modify workouts.")
+        lines.append("Use `modify_workout` to replace an existing workout in place.")
+        lines.append("Use `skip_workout` to drop a workout while keeping it in plan history.")
         for w in workouts:
             day_num = w.plan_day if w.plan_day is not None else 0
             day = _day_name(day_num)
             dur_min = (w.estimated_duration_seconds or 0) // 60
             tss = f"TSS:{w.estimated_tss:.0f}" if w.estimated_tss else ""
+            content = w.content or {}
+            skip_reason = str(content.get("reason") or "").strip()
 
-            # Determine status based on scheduled_date or plan_day
-            if w.scheduled_date:
+            if content.get("type") == "skipped":
+                status = "skipped"
+            elif w.id in workout_matches:
+                status = "completed"
+            elif w.scheduled_date:
                 sched = date.fromisoformat(str(w.scheduled_date))
                 if sched < today:
-                    status = "completed"
+                    status = "skipped"
+                elif sched == today:
+                    status = "today"
                 else:
                     status = "upcoming"
             else:
-                status = "completed" if day_num < today_weekday else "upcoming"
+                if day_num < today_weekday:
+                    status = "skipped"
+                elif day_num == today_weekday:
+                    status = "today"
+                else:
+                    status = "upcoming"
 
-            lines.append(
+            line = (
                 f"- {day}: {w.discipline} — {w.name} ({dur_min}min, {tss}) "
                 f"[{status}] [workout_id: {w.id}] [scheduled: {w.scheduled_date or 'N/A'}] "
                 f"[plan_day: {day_num}]"
             )
+            if skip_reason:
+                line += f" [skip_reason: {skip_reason}]"
+            lines.append(line)
     else:
         lines.append("")
         lines.append("### This Week's Workouts")

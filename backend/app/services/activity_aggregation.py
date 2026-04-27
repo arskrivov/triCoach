@@ -11,7 +11,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.models import ActivityRow, WorkoutRow
-from app.services.date_utils import activity_local_date, parse_date
+from app.services.date_utils import parse_date
+from app.services.workout_matching import match_workouts_to_activities
 
 
 def prompt_activity_key(discipline: str) -> str:
@@ -93,16 +94,7 @@ def completion_rate_this_week(
     if not planned:
         return None
 
-    completed = 0
-    for workout in planned:
-        scheduled = parse_date(workout["scheduled_date"])
-        for act in activities:
-            act_date = activity_local_date(act.start_time, tz)
-            if act_date is None:
-                continue
-            if abs((act_date - scheduled).days) <= 1 and act.discipline == workout["discipline"]:
-                completed += 1
-                break
+    completed = len(match_workouts_to_activities(planned, activities, tz=tz))
     return round(completed / len(planned), 2)
 
 

@@ -21,6 +21,8 @@ class ActivityRow(BaseModel):
     id: str = ""
     user_id: str = ""
     garmin_activity_id: int | None = None
+    garmin_type_key: str | None = None
+    garmin_event_type: str | None = None
     discipline: str = "OTHER"
     name: str | None = None
     start_time: str = ""

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from supabase import AsyncClient
 
 from app.database import get_supabase
-from app.models import UserRow
+from app.models import TrainingPlanRow, UserRow, WorkoutRow
 from app.services.auth import get_current_user
 from app.services.garmin_workout_sync import (
     delete_plan_workouts_from_garmin,
@@ -19,6 +19,11 @@ from app.services.garmin_workout_sync import (
 )
 from app.services.plan_adjuster import adjust_plan
 from app.services.plan_generator import generate_plan
+from app.services.workout_enrichment import (
+    generate_workout_enrichments,
+    has_detailed_workout_content,
+)
+from app.services.workout_matching import match_workouts_to_activities
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -43,6 +48,9 @@ class PlanWorkoutResponse(BaseModel):
     plan_week: int | None = None
     plan_day: int | None = None
     garmin_workout_id: int | None = None
+    completed_by_activity_id: str | None = None
+    completed_by_activity_name: str | None = None
+    completed_by_activity_start_time: str | None = None
 
 
 class PlanResponse(BaseModel):
@@ -103,6 +111,61 @@ class GarminSyncResponse(BaseModel):
     details: list
 
 
+def _scheduled_range(workouts: list[dict[str, Any]]) -> tuple[str, str] | None:
+    scheduled_dates = [
+        workout["scheduled_date"]
+        for workout in workouts
+        if workout.get("scheduled_date")
+    ]
+    if not scheduled_dates:
+        return None
+
+    min_date = min(scheduled_dates)
+    max_date = max(scheduled_dates)
+    range_start = (date.fromisoformat(min_date) - timedelta(days=1)).isoformat()
+    range_end = (date.fromisoformat(max_date) + timedelta(days=1)).isoformat()
+    return range_start, range_end
+
+
+async def _load_activities_for_workouts(
+    workouts: list[dict[str, Any]],
+    *,
+    user_id: str,
+    sb: AsyncClient,
+) -> list[dict[str, Any]]:
+    scheduled_range = _scheduled_range(workouts)
+    if scheduled_range is None:
+        return []
+
+    range_start, range_end = scheduled_range
+    activities_res = await sb.table("activities").select("*").eq(
+        "user_id", user_id
+    ).gte(
+        "start_time", range_start
+    ).lte(
+        "start_time", range_end + "T23:59:59Z"
+    ).order(
+        "start_time", desc=False
+    ).execute()
+    return activities_res.data or []
+
+
+def _attach_completion_metadata(
+    workouts: list[dict[str, Any]],
+    matches: dict[str, Any],
+) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for workout in workouts:
+        matched = matches.get(str(workout.get("id") or ""))
+        enriched.append({
+            **workout,
+            "completed_by_activity_id": matched.get("id") if matched else None,
+            "completed_by_activity_name": matched.get("name") if matched else None,
+            "completed_by_activity_start_time": matched.get("start_time") if matched else None,
+        })
+    return enriched
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -155,7 +218,17 @@ async def get_plan(
         "plan_week", desc=False
     ).order("plan_day", desc=False).execute()
 
-    return {**plan, "workouts": workouts_res.data or []}
+    workouts = workouts_res.data or []
+    activities = await _load_activities_for_workouts(
+        workouts,
+        user_id=current_user.id,
+        sb=sb,
+    )
+    matches = match_workouts_to_activities(workouts, activities)
+    return {
+        **plan,
+        "workouts": _attach_completion_metadata(workouts, matches),
+    }
 
 
 @router.put("/{plan_id}", response_model=PlanResponse)
@@ -234,6 +307,8 @@ async def get_plan_compliance(
         "id,discipline,scheduled_date,plan_week,estimated_tss"
     ).eq("plan_id", plan_id).eq("user_id", current_user.id).order(
         "plan_week", desc=False
+    ).order(
+        "plan_day", desc=False
     ).execute()
     workouts = workouts_res.data or []
 
@@ -246,11 +321,7 @@ async def get_plan_compliance(
             "weeks": [],
         }
 
-    # Determine date range for activity lookup (plan start - 1 day to plan end + 1 day)
-    scheduled_dates = [
-        w["scheduled_date"] for w in workouts if w.get("scheduled_date")
-    ]
-    if not scheduled_dates:
+    if _scheduled_range(workouts) is None:
         return {
             "plan_id": plan_id,
             "overall_compliance_pct": 0.0,
@@ -259,31 +330,12 @@ async def get_plan_compliance(
             "weeks": [],
         }
 
-    min_date = min(scheduled_dates)
-    max_date = max(scheduled_dates)
-    # Expand range by 1 day for ±1 day matching
-    range_start = (date.fromisoformat(min_date) - timedelta(days=1)).isoformat()
-    range_end = (date.fromisoformat(max_date) + timedelta(days=1)).isoformat()
-
-    # Fetch completed activities in the date range
-    # Use start_time for matching (activities have start_time as timestamptz)
-    activities_res = await sb.table("activities").select(
-        "id,discipline,start_time,tss"
-    ).eq("user_id", current_user.id).gte(
-        "start_time", range_start
-    ).lte("start_time", range_end + "T23:59:59Z").execute()
-    activities = activities_res.data or []
-
-    # Build a lookup: for each activity, extract the date portion
-    activity_entries = []
-    for act in activities:
-        act_date_str = str(act.get("start_time", ""))[:10]
-        if act_date_str:
-            activity_entries.append({
-                "date": act_date_str,
-                "discipline": act.get("discipline", ""),
-                "tss": act.get("tss") or 0.0,
-            })
+    activities = await _load_activities_for_workouts(
+        workouts,
+        user_id=current_user.id,
+        sb=sb,
+    )
+    matches = match_workouts_to_activities(workouts, activities)
 
     # Match workouts to activities
     # Group workouts by week
@@ -292,7 +344,6 @@ async def get_plan_compliance(
         week_num = w.get("plan_week") or 1
         weeks_map.setdefault(week_num, []).append(w)
 
-    used_activity_indices: set[int] = set()
     week_results: list[WeekCompliance] = []
     total_completed = 0
     total_planned = len(workouts)
@@ -305,23 +356,10 @@ async def get_plan_compliance(
 
         for w in week_workouts:
             target_tss += w.get("estimated_tss") or 0.0
-            sched = w.get("scheduled_date")
-            if not sched:
-                continue
-
-            sched_date = date.fromisoformat(sched)
-            w_discipline = w.get("discipline", "")
-
-            # Find a matching activity within ±1 day with same discipline
-            for idx, act in enumerate(activity_entries):
-                if idx in used_activity_indices:
-                    continue
-                act_date = date.fromisoformat(act["date"])
-                if abs((act_date - sched_date).days) <= 1 and act["discipline"] == w_discipline:
-                    week_completed += 1
-                    actual_tss += act["tss"]
-                    used_activity_indices.add(idx)
-                    break
+            matched = matches.get(str(w.get("id") or ""))
+            if matched:
+                week_completed += 1
+                actual_tss += matched.get("tss") or 0.0
 
         total_completed += week_completed
         compliance_pct = (week_completed / len(week_workouts) * 100) if week_workouts else 0.0
@@ -593,12 +631,7 @@ async def enrich_week_workouts(
     using the plan context (phase, goals, athlete profile).
     Workouts that already have detailed content are skipped.
     """
-    import json as _json
     import logging
-
-    from app.config import settings
-    from app.models import TrainingPlanRow
-    from app.services.athlete_profile import get_effective_athlete_profile
 
     logger = logging.getLogger(__name__)
 
@@ -610,18 +643,6 @@ async def enrich_week_workouts(
         raise HTTPException(status_code=404, detail="Plan not found")
 
     plan = TrainingPlanRow(**plan_res.data[0])
-    plan_structure = plan.plan_structure or {}
-    phases = plan_structure.get("phases", [])
-    races = plan_structure.get("races", [])
-
-    # Determine current phase
-    current_phase = "Training"
-    phase_focus = ""
-    for phase in phases:
-        if isinstance(phase, dict) and week_number in phase.get("weeks", []):
-            current_phase = phase.get("name", "Training")
-            phase_focus = phase.get("focus", "")
-            break
 
     # Fetch workouts for this week
     workouts_res = await sb.table("workouts").select("*").eq(
@@ -634,42 +655,12 @@ async def enrich_week_workouts(
     if not workouts:
         raise HTTPException(status_code=404, detail=f"No workouts found for week {week_number}")
 
-    # Fetch athlete profile for thresholds
-    profile = await get_effective_athlete_profile(current_user.id, sb)
-
-    # Build context for the AI
-    profile_context = []
-    if profile.ftp_watts:
-        profile_context.append(f"FTP: {profile.ftp_watts}W")
-    if profile.threshold_pace_sec_per_km:
-        mins = int(profile.threshold_pace_sec_per_km // 60)
-        secs = int(profile.threshold_pace_sec_per_km % 60)
-        profile_context.append(f"Threshold pace: {mins}:{secs:02d}/km")
-    if profile.swim_css_sec_per_100m:
-        mins = int(profile.swim_css_sec_per_100m // 60)
-        secs = int(profile.swim_css_sec_per_100m % 60)
-        profile_context.append(f"Swim CSS: {mins}:{secs:02d}/100m")
-    if profile.max_hr:
-        profile_context.append(f"Max HR: {profile.max_hr}bpm")
-    if profile.squat_1rm_kg:
-        profile_context.append(f"Squat 1RM: {profile.squat_1rm_kg}kg")
-    if profile.deadlift_1rm_kg:
-        profile_context.append(f"Deadlift 1RM: {profile.deadlift_1rm_kg}kg")
-    if profile.bench_1rm_kg:
-        profile_context.append(f"Bench 1RM: {profile.bench_1rm_kg}kg")
-
-    race_context = []
-    for r in races:
-        if r.get("target_date"):
-            race_context.append(f"- {r['description']}: {r['target_date']} ({r.get('race_type', '')})")
-
     # Identify workouts that need enrichment (empty or minimal content)
     to_enrich = []
     already_rich = []
     for w in workouts:
         content = w.get("content") or {}
-        has_structure = bool(content.get("warmup") or content.get("main") or content.get("cooldown"))
-        if has_structure and content.get("type") != "skipped":
+        if has_detailed_workout_content(content):
             already_rich.append(w)
         else:
             to_enrich.append(w)
@@ -689,177 +680,21 @@ async def enrich_week_workouts(
             workouts=workouts,
         )
 
-    if not settings.openai_api_key:
-        raise HTTPException(status_code=503, detail="AI enrichment is temporarily unavailable")
-
-    # Build the prompt with all workouts to enrich in one call
-    workout_list = []
-    for w in to_enrich:
-        dur_min = (w.get("estimated_duration_seconds") or 0) // 60
-        workout_list.append(
-            f'  {{"id": "{w["id"]}", "name": "{w["name"]}", '
-            f'"discipline": "{w["discipline"]}", "duration_minutes": {dur_min}, '
-            f'"estimated_tss": {w.get("estimated_tss") or 0}}}'
-        )
-
-    prompt = f"""Generate detailed, specific, actionable workout programs for each workout below.
-
-CONTEXT:
-Plan: {plan.name}
-Week {week_number} — {current_phase} phase
-Phase focus: {phase_focus}
-Athlete thresholds: {', '.join(profile_context) if profile_context else 'No threshold data available'}
-Races: {chr(10).join(race_context) if race_context else 'None'}
-
-Workouts to enrich:
-[
-{chr(10).join(workout_list)}
-]
-
-STRICT OUTPUT SCHEMA — every workout MUST follow this exact JSON structure:
-
-{{
-  "id": "<copy workout id from above>",
-  "description": "<one sentence summary>",
-  "content": {{
-    "type": "<easy|tempo|intervals|threshold|strength|mobility|recovery>",
-    "target_tss": <number>,
-    "target_hr_zone": "<Z1|Z2|Z3|Z4|Z5|N/A>",
-    "warmup": {{
-      "duration_min": <number>,
-      "zone": "<zone string>",
-      "description": "<specific warmup instructions>"
-    }},
-    "main": [
-      {{
-        "duration_min": <number>,
-        "zone": "<zone string>",
-        "description": "<specific exercise or interval description>"
-      }}
-    ],
-    "cooldown": {{
-      "duration_min": <number>,
-      "zone": "<zone string>",
-      "description": "<specific cooldown instructions>"
-    }},
-    "notes": "<coaching cues and rationale>"
-  }}
-}}
-
-MANDATORY FORMAT RULES:
-- "warmup" MUST be an object with duration_min, zone, description. NEVER a string.
-- "main" MUST be an array of objects. NEVER a string, NEVER a single object. Always an array.
-- "cooldown" MUST be an object with duration_min, zone, description. NEVER a string.
-- Each main set entry MUST have duration_min (number), zone (string), description (string).
-- Every field must be present. No nulls, no omissions.
-
-CONTENT QUALITY RULES:
-
-STRENGTH — name specific exercises with sets, reps, load, rest:
-  main: [
-    {{"duration_min": 10, "zone": "Strength", "description": "3x8 Back Squat @ 70% 1RM, 90s rest"}},
-    {{"duration_min": 10, "zone": "Strength", "description": "3x8 Romanian Deadlift @ 65% 1RM, 90s rest"}},
-    {{"duration_min": 8, "zone": "Strength", "description": "3x10 DB Shoulder Press, moderate load, 60s rest"}}
-  ]
-  NEVER write "Core & legs focus" or "Upper body work". Always name the exercise.
-
-RUN — specify pace, distance, or intervals:
-  main: [
-    {{"duration_min": 30, "zone": "Z2", "description": "Steady run at 5:30-5:45/km, conversational pace"}},
-    {{"duration_min": 8, "zone": "Z4", "description": "6x20s strides at 4:15/km with 40s walk recovery"}}
-  ]
-
-RIDE — specify power or HR targets:
-  main: [{{"duration_min": 45, "zone": "Z2", "description": "Steady endurance ride at 65-75% FTP (150-175W)"}}]
-
-SWIM — specify distances and intervals:
-  main: [{{"duration_min": 20, "zone": "Z3", "description": "8x100m @ CSS pace (1:45/100m), 15s rest"}}]
-
-YOGA/MOBILITY — name specific poses/stretches with hold times:
-  main: [{{"duration_min": 5, "zone": "Stretch", "description": "Pigeon pose 90s each side, lizard pose 60s each side"}}]
-
-Return a JSON array. Valid JSON only, no markdown fences, no text outside the array.
-"""
-
     try:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=settings.openai_api_key)
-        response = client.responses.create(
-            model=settings.openai_coach_model,
-            input=prompt,
-            max_output_tokens=16000,
+        enrichment_map = await generate_workout_enrichments(
+            plan=plan,
+            week_number=week_number,
+            workouts=[WorkoutRow(**w) for w in to_enrich],
+            user_id=current_user.id,
+            sb=sb,
         )
-        ai_text = response.output_text.strip()
-
-        # Parse the response
-        if ai_text.startswith("```"):
-            first_nl = ai_text.index("\n")
-            ai_text = ai_text[first_nl + 1:]
-        if ai_text.endswith("```"):
-            ai_text = ai_text[:-3]
-
-        # Try to parse as JSON array
-        enrichments = _json.loads(ai_text.strip())
-        if not isinstance(enrichments, list):
-            enrichments = [enrichments]
-
-    except Exception as exc:
+    except RuntimeError as exc:
         logger.error("AI enrichment failed: %s", exc)
         raise HTTPException(status_code=503, detail="AI enrichment failed. Try again.") from exc
-
-    # Normalize content structure to guarantee consistent format in DB
-    def _normalize_segment(seg: Any) -> dict:
-        """Ensure a warmup/cooldown segment is always a dict with required keys."""
-        if isinstance(seg, str):
-            return {"duration_min": 0, "zone": "", "description": seg}
-        if isinstance(seg, dict):
-            return {
-                "duration_min": seg.get("duration_min", 0),
-                "zone": seg.get("zone", ""),
-                "description": seg.get("description", ""),
-            }
-        return {"duration_min": 0, "zone": "", "description": str(seg)}
-
-    def _normalize_main(main: Any) -> list[dict]:
-        """Ensure main is always a list of dicts."""
-        if isinstance(main, list):
-            return [_normalize_segment(item) for item in main]
-        if isinstance(main, str):
-            return [{"duration_min": 0, "zone": "", "description": main}]
-        if isinstance(main, dict):
-            return [_normalize_segment(main)]
-        return []
-
-    def _normalize_content(content: Any) -> dict:
-        """Normalize the full content object."""
-        if not isinstance(content, dict):
-            return {}
-        normalized: dict[str, Any] = {}
-        if "type" in content:
-            normalized["type"] = content["type"]
-        if "target_tss" in content:
-            normalized["target_tss"] = content["target_tss"]
-        if "target_hr_zone" in content:
-            normalized["target_hr_zone"] = content["target_hr_zone"]
-        if "warmup" in content and content["warmup"]:
-            normalized["warmup"] = _normalize_segment(content["warmup"])
-        if "main" in content and content["main"]:
-            normalized["main"] = _normalize_main(content["main"])
-        if "cooldown" in content and content["cooldown"]:
-            normalized["cooldown"] = _normalize_segment(content["cooldown"])
-        if "notes" in content:
-            normalized["notes"] = str(content["notes"]) if content["notes"] else ""
-        return normalized
-
-    for enrichment in enrichments:
-        if isinstance(enrichment, dict) and "content" in enrichment:
-            enrichment["content"] = _normalize_content(enrichment["content"])
 
     # Apply enrichments to the database
     now = datetime.now(timezone.utc).isoformat()
     enriched_count = 0
-    enrichment_map = {e["id"]: e for e in enrichments if isinstance(e, dict) and "id" in e}
 
     for w in to_enrich:
         enrichment = enrichment_map.get(w["id"])

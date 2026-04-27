@@ -22,6 +22,8 @@ create table if not exists activities (
   id                      uuid primary key default gen_random_uuid(),
   user_id                 uuid references users(id) on delete cascade not null,
   garmin_activity_id      bigint unique,
+  garmin_type_key         text,
+  garmin_event_type       text,
   discipline              text not null,
   name                    text,
   start_time              timestamptz not null,

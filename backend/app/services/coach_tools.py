@@ -7,26 +7,86 @@ to Garmin Connect when applicable.
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from supabase import AsyncClient
 
+from app.models import TrainingPlanRow, WorkoutRow
 from app.services.garmin_workout_sync import (
     delete_workout_from_garmin,
     sync_workout_to_garmin,
+)
+from app.services.workout_enrichment import (
+    generate_workout_enrichments,
+    has_detailed_workout_content,
+    normalize_workout_content,
 )
 
 logger = logging.getLogger(__name__)
 
 
+async def _maybe_enrich_coach_workout(
+    workout: dict[str, Any],
+    *,
+    user_id: str,
+    sb: AsyncClient,
+    force: bool,
+) -> dict[str, Any]:
+    """Ensure coach-created/replaced workouts meet the same bar as Generate & Sync."""
+    plan_id = workout.get("plan_id")
+    if not plan_id:
+        return workout
+
+    content = normalize_workout_content(workout.get("content"))
+    if content != (workout.get("content") or {}):
+        now = datetime.now(timezone.utc).isoformat()
+        res = await sb.table("workouts").update({
+            "content": content,
+            "updated_at": now,
+        }).eq("id", workout["id"]).execute()
+        if res.data:
+            workout = res.data[0]
+        else:
+            workout = {**workout, "content": content, "updated_at": now}
+
+    if not force and has_detailed_workout_content(content):
+        return workout
+
+    plan_res = await sb.table("training_plans").select("*").eq(
+        "id", plan_id
+    ).eq("user_id", user_id).limit(1).execute()
+    if not plan_res.data:
+        return workout
+
+    plan = TrainingPlanRow(**plan_res.data[0])
+    week_number = workout.get("plan_week") or 1
+    enrichment_map = await generate_workout_enrichments(
+        plan=plan,
+        week_number=int(week_number),
+        workouts=[WorkoutRow(**workout)],
+        user_id=user_id,
+        sb=sb,
+    )
+    enrichment = enrichment_map.get(str(workout["id"]))
+    if not enrichment:
+        return workout
+
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "content": enrichment["content"],
+        "updated_at": now,
+    }
+    res = await sb.table("workouts").update(update).eq("id", workout["id"]).execute()
+    return res.data[0] if res.data else {**workout, **update}
+
+
 async def skip_workout(
     workout_id: str, reason: str, user_id: str, sb: AsyncClient
 ) -> str:
-    """Skip a planned workout (set duration/TSS to 0, mark as skipped)."""
+    """Skip a planned workout while keeping it in plan history."""
     res = await sb.table("workouts").select("*").eq(
         "id", workout_id
     ).eq("user_id", user_id).limit(1).execute()
@@ -72,7 +132,7 @@ async def modify_workout(
     new_content: dict | None = None,
     new_estimated_tss: int | None = None,
 ) -> str:
-    """Modify an existing planned workout (change name, discipline, duration, or content)."""
+    """Modify or replace an existing planned workout in place."""
     res = await sb.table("workouts").select("*").eq(
         "id", workout_id
     ).eq("user_id", user_id).limit(1).execute()
@@ -87,6 +147,8 @@ async def modify_workout(
     now = datetime.now(timezone.utc).isoformat()
     update: dict[str, Any] = {"updated_at": now}
     changes: list[str] = []
+    normalized_new_content = normalize_workout_content(new_content) if new_content is not None else None
+    force_enrichment = False
 
     if new_name:
         update["name"] = new_name
@@ -97,17 +159,35 @@ async def modify_workout(
     if new_duration_minutes is not None:
         update["estimated_duration_seconds"] = new_duration_minutes * 60
         changes.append(f"duration → {new_duration_minutes}min")
-    if new_content is not None:
-        update["content"] = new_content
+    if normalized_new_content is not None:
+        update["content"] = normalized_new_content
         changes.append("content updated")
+        force_enrichment = not has_detailed_workout_content(normalized_new_content)
     if new_estimated_tss is not None:
         update["estimated_tss"] = new_estimated_tss
         changes.append(f"TSS → {new_estimated_tss}")
+    if normalized_new_content is None and any(
+        value is not None for value in (new_discipline, new_duration_minutes, new_estimated_tss)
+    ):
+        force_enrichment = True
 
     original_desc = workout.get("description") or ""
     update["description"] = f"{reason}\n(Original: {original_desc})" if original_desc else reason
 
-    await sb.table("workouts").update(update).eq("id", workout_id).execute()
+    res = await sb.table("workouts").update(update).eq("id", workout_id).execute()
+    updated_workout = res.data[0] if res.data else {**workout, **update}
+
+    if force_enrichment:
+        try:
+            updated_workout = await _maybe_enrich_coach_workout(
+                updated_workout,
+                user_id=user_id,
+                sb=sb,
+                force=True,
+            )
+            changes.append("program enriched")
+        except RuntimeError as exc:
+            logger.warning("Coach enrichment failed for modified workout %s: %s", workout_id, exc)
 
     # Auto-sync to Garmin
     try:
@@ -140,6 +220,7 @@ async def add_workout(
         return "Cannot add a workout in the past."
 
     now = datetime.now(timezone.utc).isoformat()
+    normalized_content = normalize_workout_content(content or {})
     workout = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -147,7 +228,7 @@ async def add_workout(
         "discipline": discipline,
         "builder_type": builder_type,
         "description": reason,
-        "content": content or {},
+        "content": normalized_content,
         "estimated_duration_seconds": duration_minutes * 60,
         "estimated_tss": estimated_tss,
         "is_template": False,
@@ -159,9 +240,21 @@ async def add_workout(
         "updated_at": now,
     }
     res = await sb.table("workouts").insert(workout).execute()
+    created_workout = res.data[0] if res.data else workout
+
+    if not has_detailed_workout_content(normalized_content):
+        try:
+            created_workout = await _maybe_enrich_coach_workout(
+                created_workout,
+                user_id=user_id,
+                sb=sb,
+                force=True,
+            )
+        except RuntimeError as exc:
+            logger.warning("Coach enrichment failed for new workout %s: %s", created_workout["id"], exc)
 
     # Auto-sync to Garmin
-    workout_id = res.data[0]["id"] if res.data else workout["id"]
+    workout_id = created_workout["id"]
     try:
         await sync_workout_to_garmin(workout_id, user_id, sb)
     except Exception as exc:
@@ -176,7 +269,7 @@ COACH_TOOLS = [
     {
         "type": "function",
         "name": "skip_workout",
-        "description": "Skip/cancel a planned workout. Use when the athlete can't or doesn't want to do a specific workout.",
+        "description": "Mark a planned workout as skipped while keeping it in plan history. Use when the athlete wants to drop/cancel a workout without hard-deleting it.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -195,7 +288,7 @@ COACH_TOOLS = [
     {
         "type": "function",
         "name": "modify_workout",
-        "description": "Modify a planned workout — change its name, discipline, duration, or structured content. Use for swapping disciplines, adjusting intensity, or replacing the workout program.",
+        "description": "Modify or replace a planned workout in place — change its name, discipline, duration, or structured content. Prefer this when the athlete says to replace a workout/day instead of adding a duplicate.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -222,7 +315,7 @@ COACH_TOOLS = [
                 },
                 "new_content": {
                     "type": "object",
-                    "description": "New structured workout content (optional). Include warmup, main set, cooldown, zones, and notes.",
+                    "description": "New structured workout content (optional). Match the Generate & Sync schema: include type, target_tss, target_hr_zone, warmup object, main array, cooldown object, and notes.",
                     "properties": {
                         "type": {"type": "string"},
                         "warmup": {
@@ -300,7 +393,7 @@ COACH_TOOLS = [
                 },
                 "content": {
                     "type": "object",
-                    "description": "Structured workout content with warmup, main set, cooldown, and coaching notes",
+                    "description": "Structured workout content using the same schema as Generate & Sync: type, target_tss, target_hr_zone, warmup object, main array, cooldown object, and notes.",
                     "properties": {
                         "type": {
                             "type": "string",

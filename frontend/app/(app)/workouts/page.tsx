@@ -34,6 +34,9 @@ interface PlanWorkoutResponse {
   plan_week: number | null;
   plan_day: number | null;
   garmin_workout_id: number | null;
+  completed_by_activity_id: string | null;
+  completed_by_activity_name: string | null;
+  completed_by_activity_start_time: string | null;
 }
 
 interface WorkoutContent {
@@ -144,6 +147,16 @@ function isDateToday(dateStr: string | null): boolean {
   return dateStr.slice(0, 10) === new Date().toISOString().slice(0, 10);
 }
 
+type WorkoutStatus = "completed" | "today" | "skipped" | "upcoming";
+
+function getWorkoutStatus(workout: PlanWorkoutResponse): WorkoutStatus {
+  if (workout.completed_by_activity_id) return "completed";
+  if (workout.content?.type === "skipped") return "skipped";
+  if (isDateToday(workout.scheduled_date)) return "today";
+  if (isDatePast(workout.scheduled_date)) return "skipped";
+  return "upcoming";
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function WorkoutsPage() {
@@ -159,11 +172,18 @@ export default function WorkoutsPage() {
   const [weekBriefing, setWeekBriefing] = useState<string | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [deletingWorkoutId, setDeletingWorkoutId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"week" | "month">("week");
   const [currentMonth, setCurrentMonth] = useState<Date>(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+
+  const loadActivePlan = useCallback(async (planId: string) => {
+    const planRes = await api.get<PlanWithWorkouts>(`/plans/${planId}`);
+    setActivePlan(planRes.data);
+    return planRes.data;
+  }, []);
 
   // Load data
   useEffect(() => {
@@ -176,18 +196,17 @@ export default function WorkoutsPage() {
         // Find the active plan and load it with workouts
         const active = plansRes.data.find((p) => p.status === "active");
         if (active) {
-          const planRes = await api.get<PlanWithWorkouts>(`/plans/${active.id}`);
-          setActivePlan(planRes.data);
+          const planData = await loadActivePlan(active.id);
 
           // Jump to current week
           const today = new Date().toISOString().slice(0, 10);
-          const todayWorkout = planRes.data.workouts.find(
+          const todayWorkout = planData.workouts.find(
             (w) => w.scheduled_date?.slice(0, 10) === today
           );
           if (todayWorkout?.plan_week) {
             setCurrentWeek(todayWorkout.plan_week);
           } else {
-            const futureWorkout = planRes.data.workouts.find(
+            const futureWorkout = planData.workouts.find(
               (w) => w.scheduled_date && w.scheduled_date >= today
             );
             if (futureWorkout?.plan_week) {
@@ -206,7 +225,7 @@ export default function WorkoutsPage() {
       }
     }
     void load();
-  }, []);
+  }, [loadActivePlan]);
 
   // Derived data for active plan
   const totalWeeks = activePlan?.plan_structure?.total_weeks ?? 1;
@@ -303,12 +322,32 @@ export default function WorkoutsPage() {
       }
 
       // Refresh the plan to show updated workout content + Garmin sync status
-      const planRes = await api.get<PlanWithWorkouts>(`/plans/${activePlan.id}`);
-      setActivePlan(planRes.data);
+      await loadActivePlan(activePlan.id);
     } catch {
       // non-critical — user can retry
     } finally {
       setEnriching(false);
+    }
+  }
+
+  async function deleteSelectedWorkout() {
+    if (!activePlan || !selectedWorkout) return;
+
+    const confirmed = window.confirm(
+      `Delete "${selectedWorkout.name}" from the plan? This also removes it from Garmin if it was synced.`
+    );
+    if (!confirmed) return;
+
+    setDeletingWorkoutId(selectedWorkout.id);
+    setError(null);
+    try {
+      await api.delete(`/workouts/${selectedWorkout.id}`);
+      await loadActivePlan(activePlan.id);
+      setSelectedWorkout(null);
+    } catch {
+      setError("Failed to delete workout. Please try again.");
+    } finally {
+      setDeletingWorkoutId(null);
     }
   }
 
@@ -424,6 +463,15 @@ export default function WorkoutsPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 font-medium underline underline-offset-2 hover:no-underline">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Phase Indicator */}
       {phases && phases.length > 0 && (
         <Card className="mb-4" size="sm">
@@ -536,8 +584,7 @@ export default function WorkoutsPage() {
                   ) : (
                     <div className="space-y-1.5">
                       {dayWorkouts.map((workout) => {
-                        const past = isDatePast(workout.scheduled_date);
-                        const today = isDateToday(workout.scheduled_date);
+                        const status = getWorkoutStatus(workout);
                         const icon = DISCIPLINE_ICONS[workout.discipline] ?? "🏅";
 
                         return (
@@ -545,18 +592,21 @@ export default function WorkoutsPage() {
                             key={workout.id}
                             onClick={() => setSelectedWorkout(workout)}
                             className={`w-full rounded-xl border p-2.5 text-left transition-colors min-h-[120px] flex flex-col gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                              today
-                                ? "border-primary/50 bg-primary/5"
-                                : past
-                                  ? "border-border bg-muted/30"
-                                  : "border-border bg-card hover:bg-muted/30"
+                              status === "completed"
+                                ? "border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10"
+                                : status === "today"
+                                  ? "border-primary/50 bg-primary/5"
+                                  : status === "skipped"
+                                    ? "border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10"
+                                    : "border-border bg-card hover:bg-muted/30"
                             }`}
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-lg leading-none">{icon}</span>
-                              {past && <span className="text-xs text-emerald-500">✓</span>}
-                              {today && <span className="text-[10px] font-medium text-primary">TODAY</span>}
-                              {!past && !today && <span className="text-[10px] text-muted-foreground">○</span>}
+                              {status === "completed" && <span className="text-[10px] font-medium text-emerald-600">DONE</span>}
+                              {status === "today" && <span className="text-[10px] font-medium text-primary">TODAY</span>}
+                              {status === "skipped" && <span className="text-[10px] font-medium text-amber-600">SKIPPED</span>}
+                              {status === "upcoming" && <span className="text-[10px] text-muted-foreground">○</span>}
                             </div>
                             <p className="text-[11px] font-medium text-foreground leading-tight line-clamp-2">
                               {workout.name}
@@ -640,6 +690,25 @@ export default function WorkoutsPage() {
                   </div>
                 )}
               </div>
+
+              {selectedWorkout.completed_by_activity_id && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Completed By</p>
+                  <p className="text-sm text-foreground">
+                    {selectedWorkout.completed_by_activity_name ?? "Matched activity"}
+                    {selectedWorkout.completed_by_activity_start_time && (
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {new Date(selectedWorkout.completed_by_activity_start_time).toLocaleDateString(undefined, {
+                          weekday: "short",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
 
               {selectedWorkout.content?.warmup && (
                 <div>
@@ -727,7 +796,16 @@ export default function WorkoutsPage() {
 
             </div>
 
-            <DialogFooter showCloseButton />
+            <DialogFooter showCloseButton>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={deleteSelectedWorkout}
+                disabled={deletingWorkoutId === selectedWorkout.id}
+              >
+                {deletingWorkoutId === selectedWorkout.id ? "Deleting…" : "Delete Workout"}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         )}
       </Dialog>

@@ -111,6 +111,22 @@ def _map_discipline(garmin_type: str) -> str:
     return _GARMIN_TYPE_MAP.get(garmin_type.lower(), "OTHER")
 
 
+def _extract_event_type(summary: dict[str, Any] | None) -> str | None:
+    if not summary:
+        return None
+    event_type = summary.get("eventType")
+    if isinstance(event_type, dict):
+        value = (
+            event_type.get("typeKey")
+            or event_type.get("display")
+            or event_type.get("key")
+        )
+        return str(value) if value else None
+    if event_type:
+        return str(event_type)
+    return None
+
+
 def _encode_polyline(gps_points: list[dict]) -> str | None:
     try:
         coords = [(p["lat"], p["lon"]) for p in gps_points if "lat" in p and "lon" in p]
@@ -297,6 +313,14 @@ async def _has_activity_files_table(sb: AsyncClient) -> bool:
         return False
 
 
+async def _has_activity_classification_columns(sb: AsyncClient) -> bool:
+    try:
+        await sb.table("activities").select("garmin_type_key,garmin_event_type").limit(1).execute()
+        return True
+    except APIError:
+        return False
+
+
 async def _existing_activity_file_keys(
     user_id: str,
     sb: AsyncClient,
@@ -354,6 +378,7 @@ async def sync_activities(
         if summary.get("activityId") is not None
     ]
     files_table_available = await _has_activity_files_table(sb)
+    classification_columns_available = await _has_activity_classification_columns(sb)
     existing_file_keys = await _existing_activity_file_keys(user_id, sb, garmin_ids) if files_table_available else set()
     file_records: list[dict[str, Any]] = []
     for summary in activities:
@@ -364,6 +389,7 @@ async def sync_activities(
 
         type_key = (summary.get("activityType") or {}).get("typeKey", "OTHER")
         discipline = _map_discipline(type_key)
+        event_type = _extract_event_type(summary)
 
         start_local = summary.get("startTimeLocal") or summary.get("startTimeGMT") or ""
         try:
@@ -383,6 +409,9 @@ async def sync_activities(
             "duration_seconds": _to_int(duration),
             "calories": _to_int(calories),
         }
+        if classification_columns_available:
+            row["garmin_type_key"] = str(type_key) if type_key else None
+            row["garmin_event_type"] = event_type
 
         details = None
         activity_payload = None
