@@ -3,10 +3,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger(__name__)
 
 from postgrest.exceptions import APIError
 from supabase import AsyncClient
@@ -577,12 +580,13 @@ async def _generate_briefing(
 ) -> dict[str, Any]:
     fallback = _heuristic_briefing(overview, local_date, local_time)
     if not settings.openai_api_key:
+        logger.info("Briefing for %s: heuristic (no OpenAI key)", local_date)
         return fallback
 
     try:
         from openai import OpenAI
 
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = OpenAI(api_key=settings.openai_api_key, timeout=30.0)
         response = client.responses.create(
             model=settings.openai_analysis_model,
             instructions=BRIEFING_SYSTEM_PROMPT,
@@ -599,8 +603,10 @@ async def _generate_briefing(
         )
         briefing = _parse_ai_briefing(response.output_text.strip(), fallback)
         briefing["generated_at"] = datetime.now(timezone.utc).isoformat()
+        logger.info("Briefing for %s: AI (%s)", local_date, settings.openai_analysis_model)
         return briefing
-    except Exception:
+    except Exception as exc:
+        logger.warning("Briefing for %s: heuristic fallback (AI failed: %s)", local_date, exc)
         return fallback
 
 

@@ -1,4 +1,6 @@
 import json
+import logging
+import time
 from datetime import datetime, timezone
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -7,7 +9,8 @@ from garminconnect import Garmin
 from supabase import AsyncClient
 
 from app.config import settings
-from app.models import UserRow
+
+logger = logging.getLogger(__name__)
 
 
 def _fernet() -> Fernet:
@@ -85,23 +88,41 @@ def restore_client(session_data: dict) -> tuple[Garmin, bool]:
         and getattr(client.client, "_token_expires_soon", None)
         and client.client._token_expires_soon()
     ):
-        try:
-            client.client._refresh_session()
-            refreshed = True
-        except Exception as exc:
-            err_str = str(exc).lower()
-            if any(phrase in err_str for phrase in [
-                "invalid username-password",
-                "invalid user",
-                "unauthorized",
-                "401",
-                "not authenticated",
-            ]):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Garmin session expired — please reconnect your Garmin account in Settings.",
-                ) from exc
-            raise
+        from app.services.garmin_sync import _is_transient
+
+        max_retries = 2
+        last_exc = None
+        for attempt in range(max_retries + 1):
+            try:
+                client.client._refresh_session()
+                refreshed = True
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                err_str = str(exc).lower()
+                if any(phrase in err_str for phrase in [
+                    "invalid username-password",
+                    "invalid user",
+                    "unauthorized",
+                    "401",
+                    "not authenticated",
+                ]):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Garmin session expired — please reconnect your Garmin account in Settings.",
+                    ) from exc
+                if attempt < max_retries and _is_transient(exc):
+                    delay = 1.0 * (2 ** attempt)
+                    logger.warning(
+                        "Garmin token refresh failed (attempt %d/%d), retrying in %.1fs: %s",
+                        attempt + 1, max_retries + 1, delay, exc,
+                    )
+                    time.sleep(delay)
+                else:
+                    raise
+        if last_exc is not None:
+            raise last_exc  # pragma: no cover
 
     client.display_name = session_data.get("email") or ""
     return client, refreshed

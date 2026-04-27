@@ -23,8 +23,8 @@ def trigger_full_sync(self, user_id: str, days_back: int = 90):
         from app.services.garmin_sync import sync_activities, sync_daily_health
         sb = await _make_client()
         activities, activity_files = await sync_activities(user_id, sb, days_back=days_back)
-        health = await sync_daily_health(user_id, sb, days_back=days_back)
-        return {"activities": activities, "activity_files": activity_files, "health_days": health}
+        health, missing_metrics = await sync_daily_health(user_id, sb, days_back=days_back)
+        return {"activities": activities, "activity_files": activity_files, "health_days": health, "missing_health_metrics": missing_metrics}
 
     try:
         result = _run(_sync())

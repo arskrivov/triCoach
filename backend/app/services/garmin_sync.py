@@ -8,6 +8,7 @@ Maps Garmin activity types to our discipline enum and syncs:
 import base64
 import io
 import logging
+import time
 import zipfile
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -16,10 +17,49 @@ import polyline as polyline_codec
 from postgrest.exceptions import APIError
 from supabase import AsyncClient
 
+from garminconnect import Garmin
+
 from app.services.garmin import get_garmin_client
 from app.services.route_popularity import extract_and_store_segments
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Retry helper for transient Garmin API errors
+# ---------------------------------------------------------------------------
+
+_TRANSIENT_PHRASES = ("timeout", "connection", "503", "502", "500", "reset", "timed out")
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Return True if the exception looks like a transient network/server error."""
+    err = str(exc).lower()
+    return any(p in err for p in _TRANSIENT_PHRASES)
+
+
+def garmin_retry(func, *args, max_retries: int = 2, base_delay: float = 1.0, **kwargs):
+    """Call a Garmin client method with retry on transient errors.
+
+    Retries up to *max_retries* times with exponential backoff.
+    Non-transient errors (auth failures, 404s) are raised immediately.
+    """
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries and _is_transient(exc):
+                delay = base_delay * (2 ** attempt)
+                logger.warning(
+                    "Garmin API call %s failed (attempt %d/%d), retrying in %.1fs: %s",
+                    getattr(func, "__name__", repr(func)), attempt + 1, max_retries + 1, delay, exc,
+                )
+                time.sleep(delay)
+            else:
+                raise
+    raise last_exc  # pragma: no cover – safety net
+
 
 _GARMIN_TYPE_MAP: dict[str, str] = {
     "running": "RUN", "trail_running": "RUN", "treadmill_running": "RUN",
@@ -279,13 +319,20 @@ async def _existing_activity_file_keys(
     }
 
 
-async def sync_activities(user_id: str, sb: AsyncClient, days_back: int = 90) -> tuple[int, int]:
-    client = await get_garmin_client(user_id, sb)
+async def sync_activities(
+    user_id: str,
+    sb: AsyncClient,
+    days_back: int = 90,
+    client: Garmin | None = None,
+) -> tuple[int, int]:
+    if client is None:
+        client = await get_garmin_client(user_id, sb)
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days_back)
 
     try:
-        activities = client.get_activities_by_date(
+        activities = garmin_retry(
+            client.get_activities_by_date,
             start_date.strftime("%Y-%m-%d"),
             end_date.strftime("%Y-%m-%d"),
         )
@@ -490,8 +537,14 @@ async def sync_activities(user_id: str, sb: AsyncClient, days_back: int = 90) ->
     return len(records), files_synced
 
 
-async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) -> int:
-    client = await get_garmin_client(user_id, sb)
+async def sync_daily_health(
+    user_id: str,
+    sb: AsyncClient,
+    days_back: int = 90,
+    client: Garmin | None = None,
+) -> tuple[int, list[str]]:
+    if client is None:
+        client = await get_garmin_client(user_id, sb)
     from datetime import date, timedelta as td
 
     end_date = date.today()
@@ -499,11 +552,14 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = end_date.strftime("%Y-%m-%d")
 
+    # Track which metric types failed on any day
+    failed_metrics: set[str] = set()
+
     # Pre-fetch bulk endpoints that don't support per-day queries
     # Steps: get_daily_steps works; get_stats/get_steps_data return 403
     steps_by_date: dict[str, int] = {}
     try:
-        daily_steps = client.get_daily_steps(start_str, end_str)
+        daily_steps = garmin_retry(client.get_daily_steps, start_str, end_str)
         for item in (daily_steps or []):
             if isinstance(item, dict):
                 cal_date = item.get("calendarDate")
@@ -521,7 +577,8 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
         chunk_start = start_date
         while chunk_start <= end_date:
             chunk_end = min(chunk_start + _td(days=27), end_date)
-            cal_resp = client.connectapi(
+            cal_resp = garmin_retry(
+                client.connectapi,
                 f"/usersummary-service/stats/calories/daily"
                 f"/{chunk_start.isoformat()}/{chunk_end.isoformat()}"
             )
@@ -540,7 +597,7 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
     vo2max_running: float | None = None
     vo2max_cycling: float | None = None
     try:
-        training_status = client.get_training_status(end_str)
+        training_status = garmin_retry(client.get_training_status, end_str)
         vo2_data = (training_status or {}).get("mostRecentVO2Max") or {}
         generic = vo2_data.get("generic") or {}
         cycling = vo2_data.get("cycling") or {}
@@ -568,7 +625,7 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
                 row["vo2max_cycling"] = vo2max_cycling
 
         try:
-            hrv_data = client.get_hrv_data(date_str)
+            hrv_data = garmin_retry(client.get_hrv_data, date_str)
             if hrv_data:
                 hrv_summary = hrv_data.get("hrvSummary") or {}
                 status_raw = (hrv_summary.get("status") or "").lower()
@@ -576,10 +633,10 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
                 last_night = hrv_summary.get("lastNightAvg") or hrv_summary.get("lastNight")
                 row["hrv_last_night"] = float(last_night) if last_night else None
         except Exception:
-            pass
+            failed_metrics.add("hrv")
 
         try:
-            battery_data = client.get_body_battery(date_str)
+            battery_data = garmin_retry(client.get_body_battery, date_str)
             if battery_data and isinstance(battery_data, list):
                 item = battery_data[0]
                 # New API structure: top-level 'charged' field = daily high
@@ -597,18 +654,18 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
                         row["body_battery_high"] = max(int(v) for v in values)
                         row["body_battery_low"] = min(int(v) for v in values)
         except Exception:
-            pass
+            failed_metrics.add("body_battery")
 
         try:
-            stress_data = client.get_stress_data(date_str)
+            stress_data = garmin_retry(client.get_stress_data, date_str)
             if stress_data:
                 avg = stress_data.get("avgStressLevel") or stress_data.get("averageStressLevel")
                 row["stress_avg"] = int(avg) if avg else None
         except Exception:
-            pass
+            failed_metrics.add("stress")
 
         try:
-            sleep_data = client.get_sleep_data(date_str)
+            sleep_data = garmin_retry(client.get_sleep_data, date_str)
             if sleep_data:
                 daily = sleep_data.get("dailySleepDTO") or sleep_data
                 row["sleep_score"] = _to_int(
@@ -625,10 +682,10 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
                 row["rem_sleep_seconds"] = _to_int(daily.get("remSleepSeconds"))
                 row["light_sleep_seconds"] = _to_int(daily.get("lightSleepSeconds"))
         except Exception:
-            pass
+            failed_metrics.add("sleep")
 
         try:
-            respiration_data = client.get_respiration_data(date_str)
+            respiration_data = garmin_retry(client.get_respiration_data, date_str)
             if respiration_data:
                 avg_resp = (
                     _to_float(respiration_data.get("avgSleepRespirationValue"))
@@ -637,20 +694,20 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
                 if avg_resp and avg_resp > 0:
                     row["respiration_avg"] = avg_resp
         except Exception:
-            pass
+            failed_metrics.add("respiration")
 
         try:
-            morning_readiness = client.get_morning_training_readiness(date_str)
+            morning_readiness = garmin_retry(client.get_morning_training_readiness, date_str)
             if morning_readiness:
                 payload = morning_readiness[0] if isinstance(morning_readiness, list) else morning_readiness
                 score = _to_int(payload.get("score") or payload.get("trainingReadinessScore"))
                 if score and score > 0:
                     row["morning_readiness_score"] = score
         except Exception:
-            pass
+            failed_metrics.add("readiness")
 
         try:
-            spo2_data = client.get_spo2_data(date_str)
+            spo2_data = garmin_retry(client.get_spo2_data, date_str)
             if spo2_data:
                 avg_spo2 = _to_float(
                     spo2_data.get("averageSpO2")
@@ -660,7 +717,7 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
                 if avg_spo2 and avg_spo2 > 0:
                     row["spo2_avg"] = avg_spo2
         except Exception:
-            pass
+            failed_metrics.add("spo2")
 
         if len(row) > 2:
             records.append(row)
@@ -676,5 +733,11 @@ async def sync_daily_health(user_id: str, sb: AsyncClient, days_back: int = 90) 
             except Exception as e:
                 logger.warning("Failed to upsert health batch: %s", e)
 
+    if failed_metrics:
+        logger.warning(
+            "Health sync for user %s: missing metrics on some days: %s",
+            user_id, ", ".join(sorted(failed_metrics)),
+        )
+
     logger.info("Synced %d days of health data for user %s", len(records), user_id)
-    return len(records)
+    return len(records), sorted(failed_metrics)

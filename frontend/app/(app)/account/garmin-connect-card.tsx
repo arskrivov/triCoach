@@ -20,6 +20,7 @@ type GarminStatus = {
   connected: boolean;
   garmin_email: string | null;
   last_sync_at: string | null;
+  session_status?: "valid" | "expired" | "not_connected";
 };
 
 const GARMIN_REQUEST_CONFIG: ApiRequestConfig = { skipAuthRedirect: true };
@@ -118,25 +119,36 @@ export function GarminConnectCard() {
     setLoading(true);
 
     try {
-      const response = await api.post<GarminStatus>(
-        "/garmin/connect",
+      const response = await api.post<{
+        connected: boolean;
+        garmin_email: string;
+        activities_synced: number;
+        activity_files_synced: number;
+        health_days_synced: number;
+        missing_health_metrics: string[];
+      }>(
+        "/garmin/connect-and-sync",
         {
           garmin_email: email,
           garmin_password: password,
         },
-        GARMIN_REQUEST_CONFIG,
+        {
+          ...GARMIN_REQUEST_CONFIG,
+          headers: { "X-User-Timezone": getTimezone() },
+        },
       );
-      setStatus(response.data);
 
-      try {
-        const sync: GarminSyncResponse = await syncHistory("settings");
-        setSuccess(
-          `Garmin connected. Imported ${sync.activities_synced} activities and ${sync.health_days_synced} health days.`,
-        );
-      } catch (error: unknown) {
-        setSuccess("Garmin connected.");
-        setError(getErrorMessage(error, "Garmin connected, but the initial sync failed."));
-      }
+      const data = response.data;
+      setStatus({ connected: true, garmin_email: data.garmin_email, last_sync_at: null });
+      setSuccess(
+        `Garmin connected. Imported ${data.activities_synced} activities and ${data.health_days_synced} health days.`,
+      );
+
+      dispatchGarminSyncCompleted({
+        activitiesSynced: data.activities_synced,
+        healthDaysSynced: data.health_days_synced,
+        source: "settings",
+      });
 
       setEmail("");
       setPassword("");
@@ -222,8 +234,18 @@ export function GarminConnectCard() {
             </CardDescription>
           </div>
           {status && (
-            <Badge variant={status.connected ? "default" : "secondary"}>
-              {status.connected ? "Connected" : "Not connected"}
+            <Badge variant={
+              status.session_status === "expired"
+                ? "destructive"
+                : status.connected
+                  ? "default"
+                  : "secondary"
+            }>
+              {status.session_status === "expired"
+                ? "Session Expired"
+                : status.connected
+                  ? "Connected"
+                  : "Not connected"}
             </Badge>
           )}
         </div>
@@ -241,7 +263,15 @@ export function GarminConnectCard() {
         )}
 
         {status?.connected ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-md border p-3">
+          <div className="flex flex-col gap-3">
+            {status.session_status === "expired" && (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  Your Garmin session has expired. Please reconnect your account to resume syncing.
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-md border p-3">
             <div>
               <p className="text-sm font-medium">{status.garmin_email}</p>
               {status.last_sync_at ? (
@@ -272,6 +302,7 @@ export function GarminConnectCard() {
                 Disconnect
               </Button>
             </div>
+          </div>
           </div>
         ) : (
           <div className="flex flex-col gap-4">

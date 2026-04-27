@@ -26,14 +26,22 @@ export async function postGarminSync(
   });
 
   if (!response.ok) {
-    let message = "Sync failed.";
+    let message = `Sync failed (${response.status})`;
     try {
-      const payload = (await response.json()) as { detail?: string };
-      if (payload?.detail) {
-        message = payload.detail;
+      const text = await response.text();
+      try {
+        const payload = JSON.parse(text) as { detail?: string };
+        if (payload?.detail) {
+          message = payload.detail;
+        }
+      } catch {
+        // Not JSON — use the raw text if it's short enough to be useful
+        if (text.length > 0 && text.length < 200) {
+          message = text;
+        }
       }
     } catch {
-      // Ignore JSON parse failures and use fallback message.
+      // Could not read response body at all
     }
     throw new Error(message);
   }

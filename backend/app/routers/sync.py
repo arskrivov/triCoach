@@ -32,6 +32,7 @@ class SyncResponse(BaseModel):
     activities_synced: int
     activity_files_synced: int = 0
     health_days_synced: int
+    missing_health_metrics: list[str] = []
 
 
 class TriggerResponse(BaseModel):
@@ -70,7 +71,7 @@ async def _run_sync(
 ) -> SyncResponse:
     try:
         activities, activity_files = await sync_activities(current_user.id, sb, days_back=days_back)
-        health = await sync_daily_health(current_user.id, sb, days_back=days_back)
+        health, missing_metrics = await sync_daily_health(current_user.id, sb, days_back=days_back)
         try:
             res = await sb.table("activities").select("id").eq("user_id", current_user.id).is_(
                 "ai_analysis", "null"
@@ -96,6 +97,7 @@ async def _run_sync(
             activities_synced=activities,
             activity_files_synced=activity_files,
             health_days_synced=health,
+            missing_health_metrics=missing_metrics,
         )
     except HTTPException:
         raise
