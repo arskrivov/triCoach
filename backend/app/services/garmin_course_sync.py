@@ -373,15 +373,34 @@ async def sync_route_to_garmin(
             tmp.flush()
             tmp_path = tmp.name
 
-        # Get authenticated headers from the garmin client
-        headers = garmin_client.client.get_api_headers()
+        # Get auth credentials — the web proxy needs JWT_WEB cookie auth,
+        # not the DI bearer token used by connectapi.garmin.com
+        gc = garmin_client.client
+        connect_base = f"https://connect.{gc.domain}"
+        url = f"{connect_base}/proxy/course-service/course/upload/.gpx"
 
-        connect_base = f"https://connect.{garmin_client.client.domain}"
-        url = f"{connect_base}/course-service/course/upload/.gpx"
+        # Build web-proxy headers with JWT_WEB cookie
+        web_headers = {
+            "Accept": "application/json",
+            "NK": "NT",
+            "Origin": connect_base,
+            "Referer": f"{connect_base}/modern/",
+            "DI-Backend": f"connectapi.{gc.domain}",
+        }
+        # Use JWT_WEB cookie if available, fall back to DI bearer token
+        cookies = {}
+        if gc.jwt_web:
+            cookies["JWT_WEB"] = gc.jwt_web
+            if gc.csrf_token:
+                web_headers["connect-csrf-token"] = str(gc.csrf_token)
+        elif gc.di_token:
+            web_headers["Authorization"] = f"Bearer {gc.di_token}"
 
         with open(tmp_path, "rb") as f:
             files = {"data": (f"{route_name}.gpx", f, "application/octet-stream")}
-            resp = _requests.post(url, headers=headers, files=files, timeout=30)
+            resp = _requests.post(
+                url, headers=web_headers, cookies=cookies, files=files, timeout=30,
+            )
 
         if resp.status_code >= 400:
             logger.error(
@@ -396,7 +415,9 @@ async def sync_route_to_garmin(
 
         try:
             upload_response = resp.json()
+            print(f"[GARMIN-COURSE] Upload response: {upload_response}")
         except Exception:
+            print(f"[GARMIN-COURSE] Non-JSON response: status={resp.status_code} body={resp.text[:500]}")
             upload_response = None
 
     except HTTPException:
