@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Any
 
@@ -13,6 +14,11 @@ from app.services.route_generator import (
     RouteGenerationRateLimitError,
     generate_routes,
 )
+from app.services.garmin_course_sync import sync_route_to_garmin
+from app.services.prohibited_areas import check_route_prohibited_areas
+from app.services.route_suggestions import get_route_suggestions
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/routes", tags=["routes"])
 
@@ -34,6 +40,7 @@ class RouteOptionResponse(BaseModel):
     elevation_gain_m: float
     elevation_loss_m: float
     estimated_duration_seconds: int
+    surface_breakdown: dict[str, float] | None = None
 
 
 class RouteSaveRequest(BaseModel):
@@ -49,6 +56,7 @@ class RouteSaveRequest(BaseModel):
     elevation_loss_meters: float | None = None
     estimated_duration_seconds: int | None = None
     geojson: Any = None
+    surface_breakdown: dict[str, float] | None = None
 
 
 class RouteResponse(BaseModel):
@@ -66,6 +74,8 @@ class RouteResponse(BaseModel):
     estimated_duration_seconds: int | None
     geojson: Any
     gpx_data: str | None
+    garmin_course_id: int | None = None
+    surface_breakdown: dict | None = None
 
 
 @router.post("/generate", response_model=list[RouteOptionResponse])
@@ -98,6 +108,7 @@ async def generate(
             elevation_gain_m=o.elevation_gain_m,
             elevation_loss_m=o.elevation_loss_m,
             estimated_duration_seconds=o.estimated_duration_seconds,
+            surface_breakdown=o.surface_breakdown,
         )
         for o in options
     ]
@@ -130,6 +141,136 @@ async def list_routes(
         q = q.eq("sport", sport.upper())
     res = await q.execute()
     return res.data or []
+
+
+class RouteSuggestionRequest(BaseModel):
+    discipline: str
+    target_distance_meters: float
+    start_lat: float
+    start_lng: float
+    target_elevation_gain: float | None = None
+
+
+class RouteSuggestionResponse(BaseModel):
+    id: str
+    name: str
+    distance_meters: float
+    elevation_gain_meters: float | None
+    popularity_score: float
+    combined_score: float
+    usage_count_90d: int
+    surface_breakdown: dict[str, float] | None
+    popularity_label: str | None = None
+
+
+@router.post("/suggestions", response_model=list[RouteSuggestionResponse])
+async def get_suggestions(
+    body: RouteSuggestionRequest,
+    current_user: UserRow = Depends(get_current_user),
+    sb: AsyncClient = Depends(get_supabase),
+):
+    discipline = body.discipline.upper()
+    if discipline not in ("RUN", "RIDE_ROAD", "RIDE_GRAVEL"):
+        raise HTTPException(
+            status_code=400,
+            detail="discipline must be RUN, RIDE_ROAD, or RIDE_GRAVEL",
+        )
+
+    suggestions = await get_route_suggestions(
+        user_id=current_user.id,
+        discipline=discipline,
+        target_distance_meters=body.target_distance_meters,
+        start_lat=body.start_lat,
+        start_lng=body.start_lng,
+        target_elevation_gain=body.target_elevation_gain,
+        sb=sb,
+    )
+
+    return [
+        RouteSuggestionResponse(
+            id=s.route_id,
+            name=s.name,
+            distance_meters=s.distance_meters,
+            elevation_gain_meters=s.elevation_gain_meters if s.elevation_gain_meters else None,
+            popularity_score=s.popularity_score,
+            combined_score=s.combined_score,
+            usage_count_90d=s.usage_count_90d,
+            surface_breakdown=s.surface_breakdown if s.surface_breakdown else None,
+            popularity_label=s.popularity_label,
+        )
+        for s in suggestions
+    ]
+
+
+class GarminSyncResponse(BaseModel):
+    garmin_course_id: int
+    message: str
+
+
+_CYCLING_SPORTS = {"RIDE_ROAD", "RIDE_GRAVEL"}
+
+
+@router.post("/{route_id}/sync-garmin", response_model=GarminSyncResponse)
+async def sync_to_garmin(
+    route_id: str,
+    current_user: UserRow = Depends(get_current_user),
+    sb: AsyncClient = Depends(get_supabase),
+):
+    # Fetch the route and verify ownership
+    res = await sb.table("routes").select("*").eq("id", route_id).eq(
+        "user_id", current_user.id
+    ).limit(1).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    route = res.data[0]
+    sport = (route.get("sport") or "").upper()
+
+    if sport not in _CYCLING_SPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail="Garmin course sync is only available for cycling routes (RIDE_ROAD, RIDE_GRAVEL)",
+        )
+
+    result = await sync_route_to_garmin(
+        route_id=route_id,
+        user_id=current_user.id,
+        sb=sb,
+    )
+
+    return GarminSyncResponse(
+        garmin_course_id=result.garmin_course_id,
+        message=f"Course '{result.course_name}' synced to Garmin successfully",
+    )
+
+
+class ProhibitedAreaCheck(BaseModel):
+    has_prohibited_areas: bool
+    areas: list[dict]
+
+
+@router.get("/{route_id}/check-prohibited", response_model=ProhibitedAreaCheck)
+async def check_prohibited_areas(
+    route_id: str,
+    current_user: UserRow = Depends(get_current_user),
+    sb: AsyncClient = Depends(get_supabase),
+):
+    # Fetch the route and verify ownership
+    res = await sb.table("routes").select("*").eq("id", route_id).eq(
+        "user_id", current_user.id
+    ).limit(1).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    route = res.data[0]
+    geojson = route.get("geojson")
+
+    areas = await check_route_prohibited_areas(geojson=geojson or {}, sb=sb)
+
+    return ProhibitedAreaCheck(
+        has_prohibited_areas=len(areas) > 0,
+        areas=areas,
+    )
 
 
 @router.get("/{route_id}", response_model=RouteResponse)

@@ -1,5 +1,5 @@
 -- Personal Coach App — Supabase Schema
--- Last synced from live DB: 2026-06-25
+-- Last synced from live DB: 2026-06-26
 -- Run this entire file in: Supabase Dashboard → SQL Editor → New Query → Run
 
 create extension if not exists "pgcrypto";
@@ -225,12 +225,14 @@ create table if not exists workouts (
   plan_id                     uuid references training_plans(id) on delete set null,
   plan_week                   int,           -- week number within the plan
   plan_day                    int,           -- 0=Monday through 6=Sunday
+  route_id                    uuid references routes(id) on delete set null,  -- linked route for RUN/RIDE workouts
   created_at                  timestamptz default now(),
   updated_at                  timestamptz default now()
 );
 
 create index if not exists idx_workouts_user_id on workouts(user_id);
 create index if not exists idx_workouts_plan_id on workouts(plan_id);
+create index if not exists idx_workouts_route_id on workouts(route_id);
 
 -- ── Exercises (library) ───────────────────────────────────────────────────────
 create table if not exists exercises (
@@ -260,10 +262,45 @@ create table if not exists routes (
   geojson                     jsonb,
   gpx_data                    text,
   surface_breakdown           jsonb,
+  garmin_course_id            bigint,           -- Garmin Connect course ID after sync
   created_at                  timestamptz default now()
 );
 
 create index if not exists idx_routes_user_id on routes(user_id);
+create index if not exists idx_routes_garmin_course_id on routes(garmin_course_id);
+
+-- ── Route Segment Popularity (anonymized segment usage tracking) ──────────────
+create table if not exists route_segment_popularity (
+  id              uuid primary key default gen_random_uuid(),
+  segment_hash    text not null,
+  discipline      text not null,
+  usage_count     int not null default 1,
+  last_used_at    timestamptz not null default now(),
+  coordinates     jsonb not null,  -- {lat1, lng1, lat2, lng2}
+  created_at      timestamptz not null default now(),
+  
+  constraint unique_segment_discipline unique (segment_hash, discipline)
+);
+
+create index if not exists idx_segment_popularity_hash on route_segment_popularity(segment_hash);
+create index if not exists idx_segment_popularity_discipline on route_segment_popularity(discipline);
+create index if not exists idx_segment_popularity_last_used on route_segment_popularity(last_used_at);
+
+-- ── Cycling Prohibited Areas (areas where cycling is not permitted) ───────────
+create table if not exists cycling_prohibited_areas (
+  id                uuid primary key default gen_random_uuid(),
+  area_name         text,
+  geometry          jsonb not null,  -- GeoJSON Polygon
+  osm_id            bigint,
+  source            text not null default 'osm',
+  restriction_type  text,            -- 'no', 'dismount', 'private'
+  updated_at        timestamptz not null default now(),
+  created_at        timestamptz not null default now()
+);
+
+-- GIN index on geometry for spatial queries
+create index if not exists idx_prohibited_areas_bbox on cycling_prohibited_areas
+  using gin (geometry jsonb_path_ops);
 
 -- ── Row Level Security (disable for service_role key — backend uses it) ───────
 -- RLS is bypassed automatically when connecting with the service_role key.

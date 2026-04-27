@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { api } from "@/lib/api";
+import { api, linkRouteToWorkout } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatDuration } from "@/lib/format";
+import type { Discipline } from "@/lib/types";
+import type { WorkoutRouteContext } from "@/lib/types";
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
@@ -31,19 +33,59 @@ interface RouteOption {
   elevation_gain_m: number;
   elevation_loss_m: number;
   estimated_duration_seconds: number;
+  surface_breakdown?: Record<string, number> | null;
 }
 
 const ROUTE_COLORS = ["#3b82f6", "#00d4ff", "#22c55e"];
 
-export default function NewRoutePage() {
+/** Typical pace in m/s used to estimate distance from workout duration. */
+const TYPICAL_PACE: Record<string, number> = {
+  RUN: 3.0,
+  RIDE_ROAD: 7.0,
+  RIDE_GRAVEL: 5.0,
+};
+
+const ROUTE_DISCIPLINES = new Set(["RUN", "RIDE_ROAD", "RIDE_GRAVEL"]);
+
+function NewRoutePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const routeLayerIds = useRef<string[]>([]);
 
-  const [sport, setSport] = useState("RUN");
-  const [distanceKm, setDistanceKm] = useState(10);
+  // Parse workout context from URL parameters (task 14.1)
+  const workoutContext = useMemo<WorkoutRouteContext | null>(() => {
+    const workoutId = searchParams.get("workout_id");
+    const discipline = searchParams.get("discipline");
+    const durationStr = searchParams.get("duration");
+
+    if (!workoutId || !discipline || !ROUTE_DISCIPLINES.has(discipline)) {
+      return null;
+    }
+
+    const estimatedDuration = durationStr ? parseInt(durationStr, 10) : 0;
+    const pace = TYPICAL_PACE[discipline] ?? 3.0;
+    const suggestedDistanceMeters =
+      estimatedDuration > 0 ? estimatedDuration * pace : 0;
+
+    return {
+      workoutId,
+      discipline: discipline as Discipline,
+      estimatedDuration: isNaN(estimatedDuration) ? 0 : estimatedDuration,
+      suggestedDistanceMeters,
+    };
+  }, [searchParams]);
+
+  // Pre-fill sport and distance from workout context
+  const [sport, setSport] = useState<string>(workoutContext?.discipline ?? "RUN");
+  const [distanceKm, setDistanceKm] = useState(() => {
+    if (workoutContext && workoutContext.suggestedDistanceMeters > 0) {
+      return Math.round(workoutContext.suggestedDistanceMeters / 1000);
+    }
+    return 10;
+  });
   const [startLat, setStartLat] = useState<number | null>(null);
   const [startLng, setStartLng] = useState<number | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -220,7 +262,7 @@ export default function NewRoutePage() {
     if (selected === null || !routeName.trim()) return;
     setSaving(true);
     try {
-      await api.post("/routes", {
+      const res = await api.post<{ id: string }>("/routes", {
         name: routeName.trim(),
         sport,
         start_lat: startLat,
@@ -233,8 +275,17 @@ export default function NewRoutePage() {
         estimated_duration_seconds: routes[selected].estimated_duration_seconds,
         geojson: routes[selected].geojson,
         is_loop: true,
+        surface_breakdown: routes[selected].surface_breakdown ?? null,
       });
-      router.push("/routes");
+
+      // Auto-link route to workout and redirect back when in context mode (task 14.2)
+      if (workoutContext) {
+        const newRouteId = res.data.id;
+        await linkRouteToWorkout(workoutContext.workoutId, newRouteId);
+        router.push(`/workouts/${workoutContext.workoutId}`);
+      } else {
+        router.push("/routes");
+      }
     } catch {
       setError("Failed to save route.");
     } finally {
@@ -252,6 +303,20 @@ export default function NewRoutePage() {
         </div>
 
         <div className="p-4 flex flex-col gap-4 flex-1">
+          {/* Workout context banner (task 14.1) */}
+          {workoutContext && (
+            <div className="rounded-lg bg-primary/10 border border-primary/20 p-3">
+              <p className="text-xs font-medium text-primary">Creating route for workout</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {workoutContext.discipline.replace("_", " ")}
+                {workoutContext.suggestedDistanceMeters > 0 &&
+                  ` · ~${Math.round(workoutContext.suggestedDistanceMeters / 1000)} km target`}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Route will be linked automatically on save.
+              </p>
+            </div>
+          )}
           {/* Sport */}
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Sport</label>
@@ -327,7 +392,7 @@ export default function NewRoutePage() {
                 placeholder="e.g. Morning Loop"
               />
               <Button onClick={save} disabled={saving || !routeName.trim()}>
-                {saving ? "Saving…" : "Save Route"}
+                {saving ? "Saving…" : workoutContext ? "Save & Link to Workout" : "Save Route"}
               </Button>
             </div>
           )}
@@ -354,5 +419,13 @@ export default function NewRoutePage() {
         <div ref={mapContainer} className="absolute inset-0 min-h-screen w-full" />
       </div>
     </div>
+  );
+}
+
+export default function NewRoutePage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading…</div>}>
+      <NewRoutePageInner />
+    </Suspense>
   );
 }

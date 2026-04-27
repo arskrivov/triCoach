@@ -696,7 +696,8 @@ async def enrich_week_workouts(
             f'"estimated_tss": {w.get("estimated_tss") or 0}}}'
         )
 
-    prompt = f"""Generate detailed structured workout content for each workout below.
+    prompt = f"""Generate detailed, specific, actionable workout content for each workout below.
+You are an elite performance coach writing programs that an athlete can follow rep-by-rep.
 
 Plan: {plan.name}
 Week {week_number} — {current_phase} phase
@@ -714,10 +715,39 @@ For EACH workout, generate a JSON object with:
 - "content": structured workout with warmup, main, cooldown, target_tss, target_hr_zone, notes
 - "description": one-sentence summary
 
-For STRENGTH workouts, use main set entries like:
-  {{"duration_min": 10, "description": "3x8 Back Squat @ 70% 1RM, 90s rest", "zone": "Strength"}}
+CRITICAL RULES FOR CONTENT QUALITY:
 
-For SWIM/RUN/RIDE workouts, use HR zones (Z1-Z5) and pace targets.
+STRENGTH workouts — be SPECIFIC with exercises, sets, reps, and load:
+- Each main set entry = ONE exercise with sets × reps, load (% 1RM or RPE), and rest period.
+- Use the athlete's 1RM values if available to calculate working weights.
+- Example main set entries:
+  {{"duration_min": 10, "description": "3x8 Back Squat @ 70% 1RM, 90s rest", "zone": "Strength"}}
+  {{"duration_min": 10, "description": "3x8 Deadlifts @ 70% 1RM, 90s rest", "zone": "Strength"}}
+  {{"duration_min": 8, "description": "3x10 Dumbbell Shoulder Press, moderate load, 60s rest", "zone": "Strength"}}
+- NEVER write vague descriptions like "Core & legs focus" or "Upper body work". Always name the specific exercises.
+- Include 3-5 exercises per strength session.
+
+SWIM workouts — be SPECIFIC with distances, intervals, and paces:
+- Use the athlete's CSS pace if available.
+- Example: "4x200m @ CSS pace, 20s rest" or "8x50m sprint @ max effort, 30s rest"
+- Include total distance in the description.
+
+RUN workouts — be SPECIFIC with paces and intervals:
+- Use the athlete's threshold pace if available.
+- For easy runs: "Steady Z2 at threshold_pace + 60s/km"
+- For intervals: "5x1000m @ threshold pace, 90s jog rest"
+- For tempo: "20min continuous at threshold pace"
+
+RIDE workouts — be SPECIFIC with power targets and intervals:
+- Use the athlete's FTP if available.
+- For endurance: "Steady Z2 at 65-75% FTP"
+- For intervals: "4x8min @ 95-100% FTP, 4min easy spin"
+- For sweet spot: "2x20min @ 88-93% FTP, 5min recovery"
+
+YOGA/MOBILITY — describe specific poses or stretches, hold times.
+
+Warmup and cooldown should also be specific (e.g., "5min easy jog building to Z2" not just "warmup").
+Notes should give coaching cues relevant to the phase and athlete.
 
 Return a JSON array of objects. Valid JSON only, no markdown fences.
 Example: [{{"id": "abc", "content": {{...}}, "description": "..."}}]"""

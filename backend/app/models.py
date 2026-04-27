@@ -176,6 +176,7 @@ class WorkoutRow(BaseModel):
     plan_id: str | None = None
     plan_week: int | None = None
     plan_day: int | None = None
+    route_id: str | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -205,5 +206,6 @@ class RouteRow(BaseModel):
     estimated_duration_seconds: int | None = None
     geojson: Any = None
     gpx_data: str | None = None
+    garmin_course_id: int | None = None
     surface_breakdown: Any = None
     created_at: str = ""

@@ -38,6 +38,7 @@ class RouteOption:
     elevation_loss_m: float
     estimated_duration_seconds: int
     seed: int
+    surface_breakdown: dict[str, float] | None = None
 
 
 def _seed_offset_for_sport(sport: str) -> int:
@@ -420,6 +421,40 @@ async def _generate_point_to_point(
         raise RouteGenerationError("GraphHopper could not generate a route for this request.") from e
 
 
+def _calculate_surface_breakdown(path: dict) -> dict[str, float] | None:
+    """Calculate percentage of each surface type from GraphHopper route details.
+
+    GraphHopper returns surface details as a list of [start_index, end_index, surface_type]
+    entries where the indices refer to coordinate positions. The distance between indices
+    is used as a proxy for segment length.
+    """
+    details = path.get("details", {})
+    surface_segments = details.get("surface", [])
+    if not surface_segments:
+        return None
+
+    surface_lengths: dict[str, int] = {}
+    total_length = 0
+    for start_idx, end_idx, surface_type in surface_segments:
+        segment_length = end_idx - start_idx
+        if segment_length <= 0:
+            continue
+        key = str(surface_type).lower()
+        surface_lengths[key] = surface_lengths.get(key, 0) + segment_length
+        total_length += segment_length
+
+    if total_length == 0:
+        return None
+
+    breakdown: dict[str, float] = {}
+    for surface_type, length in sorted(surface_lengths.items(), key=lambda x: x[1], reverse=True):
+        percentage = round((length / total_length) * 100, 1)
+        if percentage > 0:
+            breakdown[surface_type] = percentage
+
+    return breakdown
+
+
 def _parse_route(data: dict, seed: int, sport: str) -> RouteOption | None:
     paths = data.get("paths", [])
     if not paths:
@@ -435,6 +470,8 @@ def _parse_route(data: dict, seed: int, sport: str) -> RouteOption | None:
     time_ms = path.get("time", 0)
     duration_s = int(time_ms / 1000) if time_ms else int(distance_m / _SPEEDS.get(sport, 3.0))
 
+    surface_breakdown = _calculate_surface_breakdown(path)
+
     return RouteOption(
         geojson={
             "type": "Feature",
@@ -446,4 +483,5 @@ def _parse_route(data: dict, seed: int, sport: str) -> RouteOption | None:
         elevation_loss_m=round(descend, 1),
         estimated_duration_seconds=duration_s,
         seed=seed,
+        surface_breakdown=surface_breakdown,
     )
