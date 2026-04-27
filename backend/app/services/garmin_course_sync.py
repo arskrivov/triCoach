@@ -265,10 +265,27 @@ def convert_geojson_to_fit_course(
     trk_type.text = activity_type
 
     trkseg = ET.SubElement(trk, "trkseg")
-    for lat, lon in coords:
+
+    # Add timestamps to track points — required by Garmin upload_activity.
+    # Estimate time between points based on sport pace.
+    pace_mps = {"Biking": 7.0, "Running": 3.0}.get(activity_type, 4.0)
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    current_time = _dt(2000, 1, 1, 8, 0, 0, tzinfo=_tz.utc)  # arbitrary start
+
+    for idx, (lat, lon) in enumerate(coords):
         trkpt = ET.SubElement(trkseg, "trkpt")
         trkpt.set("lat", f"{lat:.7f}")
         trkpt.set("lon", f"{lon:.7f}")
+
+        time_el = ET.SubElement(trkpt, "time")
+        time_el.text = current_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Estimate time to next point
+        if idx < len(coords) - 1:
+            next_lat, next_lon = coords[idx + 1]
+            dist = _haversine(lat, lon, next_lat, next_lon)
+            seconds = max(1, dist / pace_mps)
+            current_time += _td(seconds=seconds)
 
     # Serialize to bytes
     tree = ET.ElementTree(gpx)
