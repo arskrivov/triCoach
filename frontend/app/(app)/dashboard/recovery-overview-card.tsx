@@ -166,12 +166,10 @@ function MiniSparkline({
   data,
   dataKey,
   stroke,
-  higherIsBetter,
 }: {
   data: HealthSparklinePoint[];
   dataKey: keyof HealthSparklinePoint;
   stroke: string;
-  higherIsBetter: boolean;
 }) {
   const visible = data.slice(-14); // last 14 days
   const hasData = visible.some((p) => typeof p[dataKey] === "number");
@@ -214,14 +212,14 @@ export function RecoveryOverviewCard({
   );
 
   // Sparkline colour + axis mapping per metric key
-  const sparklineConfig: Record<string, { stroke: string; dataKey: keyof HealthSparklinePoint; higherIsBetter: boolean }> = {
-    hrv_last_night:                    { stroke: "oklch(0.75 0.15 180)", dataKey: "hrv",          higherIsBetter: true  },
-    resting_hr:                        { stroke: "oklch(0.72 0.18 335)", dataKey: "resting_hr",   higherIsBetter: false },
-    sleep_score:                       { stroke: "oklch(0.70 0.15 265)", dataKey: "sleep_score",  higherIsBetter: true  },
-    stress_avg:                        { stroke: "oklch(0.78 0.15 85)",  dataKey: "stress",       higherIsBetter: false },
-    pulse_ox_avg:                      { stroke: "oklch(0.70 0.15 265)", dataKey: "spo2",         higherIsBetter: true  },
-    respiration_sleep:                 { stroke: "oklch(0.65 0.12 300)", dataKey: "respiration",  higherIsBetter: false },
-    morning_training_readiness_score:  { stroke: "oklch(0.75 0.15 180)", dataKey: "readiness",    higherIsBetter: true  },
+  const sparklineConfig: Record<string, { stroke: string; dataKey: keyof HealthSparklinePoint }> = {
+    hrv_last_night:                   { stroke: "oklch(0.75 0.15 180)", dataKey: "hrv" },
+    resting_hr:                       { stroke: "oklch(0.72 0.18 335)", dataKey: "resting_hr" },
+    sleep_score:                      { stroke: "oklch(0.70 0.15 265)", dataKey: "sleep_score" },
+    stress_avg:                       { stroke: "oklch(0.78 0.15 85)", dataKey: "stress" },
+    pulse_ox_avg:                     { stroke: "oklch(0.70 0.15 265)", dataKey: "spo2" },
+    respiration_sleep:                { stroke: "oklch(0.65 0.12 300)", dataKey: "respiration" },
+    morning_training_readiness_score: { stroke: "oklch(0.75 0.15 180)", dataKey: "readiness" },
   };
 
   return (
@@ -306,7 +304,6 @@ export function RecoveryOverviewCard({
                       data={recovery.sparkline}
                       dataKey={spark.dataKey}
                       stroke={spark.stroke}
-                      higherIsBetter={spark.higherIsBetter}
                     />
                   ) : (
                     <div className="h-8 w-16" />

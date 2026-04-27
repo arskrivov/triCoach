@@ -79,32 +79,6 @@ class DailyHealthRow(BaseModel):
     vo2max_cycling: float | None = None
 
 
-class DailyBriefingRow(BaseModel):
-    id: str = ""
-    user_id: str = ""
-    briefing_date: str = ""
-    data_signature: str = ""
-    timezone: str | None = None
-    briefing: Any = None
-    created_at: str = ""
-    updated_at: str = ""
-
-
-class ActivityFileRow(BaseModel):
-    id: str = ""
-    user_id: str = ""
-    activity_id: str | None = None
-    garmin_activity_id: int = 0
-    file_format: str = ""
-    content_type: str = ""
-    content_encoding: str = ""
-    file_data: str = ""
-    file_size_bytes: int | None = None
-    source_filename: str | None = None
-    created_at: str = ""
-    synced_at: str = ""
-
-
 class AthleteProfileRow(BaseModel):
     id: str = ""
     user_id: str = ""
@@ -134,13 +108,6 @@ class GoalRow(BaseModel):
     weekly_hours_budget: float | None = None
     priority: int = 1
     created_at: str = ""
-
-
-class CoachConversationRow(BaseModel):
-    id: str = ""
-    user_id: str = ""
-    messages: list = Field(default_factory=list)
-    updated_at: str = ""
 
 
 class TrainingPlanRow(BaseModel):
@@ -178,12 +145,3 @@ class WorkoutRow(BaseModel):
     plan_day: int | None = None
     created_at: str = ""
     updated_at: str = ""
-
-
-class ExerciseRow(BaseModel):
-    id: str = ""
-    user_id: str | None = None
-    name: str = ""
-    muscle_groups: list[str] | None = None
-    equipment: str | None = None
-    is_custom: bool = False

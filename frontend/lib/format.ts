@@ -10,30 +10,6 @@ export function formatDuration(seconds: number | null): string {
   return `${s}s`;
 }
 
-export function formatPace(secPerKm: number | null): string {
-  if (!secPerKm) return "—";
-  const m = Math.floor(secPerKm / 60);
-  const s = Math.round(secPerKm % 60);
-  return `${m}:${s.toString().padStart(2, "0")}/km`;
-}
-
-export function formatDistance(meters: number | null): string {
-  if (!meters) return "—";
-  if (meters >= 500) return `${(meters / 1000).toFixed(1)} km`;
-  return `${Math.round(meters)} m`;
-}
-
-export function formatSteps(steps: number | null): string {
-  if (!steps) return "—";
-  if (steps >= 1000) return `${(steps / 1000).toFixed(1)}k`;
-  return `${steps}`;
-}
-
-export function formatCalories(kcal: number | null): string {
-  if (!kcal) return "—";
-  return `${kcal.toLocaleString()} kcal`;
-}
-
 export function formatHRV(hrv: number | null): string {
   if (!hrv) return "—";
   return `${Math.round(hrv)} ms`;
@@ -55,17 +31,6 @@ export function formatDate(iso: string): string {
   });
 }
 
-export function formatRelativeDate(iso: string): string {
-  const date = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / 86400000);
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return formatDate(iso);
-}
-
 const DISCIPLINE_META: Record<
   Discipline,
   { label: string; icon: string; color: string }
@@ -82,31 +47,6 @@ const DISCIPLINE_META: Record<
 
 export function getDisciplineMeta(d: Discipline) {
   return DISCIPLINE_META[d] ?? DISCIPLINE_META.OTHER;
-}
-
-export function primaryStat(activity: {
-  discipline: Discipline;
-  distance_meters: number | null;
-  avg_pace_sec_per_km: number | null;
-  avg_power_watts: number | null;
-  total_sets: number | null;
-  total_volume_kg: number | null;
-  duration_seconds: number | null;
-  session_type: string | null;
-}): string {
-  const { discipline } = activity;
-  if (["RUN", "SWIM", "RIDE_ROAD", "RIDE_GRAVEL"].includes(discipline)) {
-    const dist = formatDistance(activity.distance_meters);
-    const pace = discipline === "RUN" ? formatPace(activity.avg_pace_sec_per_km) : null;
-    const power = activity.avg_power_watts ? `${activity.avg_power_watts}W` : null;
-    return [dist, pace ?? power].filter(Boolean).join(" · ");
-  }
-  if (discipline === "STRENGTH") {
-    const sets = activity.total_sets ? `${activity.total_sets} sets` : null;
-    const vol = activity.total_volume_kg ? `${activity.total_volume_kg.toLocaleString()} kg` : null;
-    return [sets, vol].filter(Boolean).join(" · ") || "—";
-  }
-  return activity.session_type?.replace(/_/g, " ") ?? formatDuration(activity.duration_seconds);
 }
 
 // ---------------------------------------------------------------------------

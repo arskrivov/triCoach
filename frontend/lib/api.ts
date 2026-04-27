@@ -55,8 +55,6 @@ api.interceptors.response.use(
   }
 );
 
-export type ApiError = { detail: string };
-
 export async function getAuthHeaders(init?: HeadersInit): Promise<Headers> {
   const headers = new Headers(init);
   try {
