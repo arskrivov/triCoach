@@ -341,14 +341,23 @@ async def sync_route_to_garmin(
             detail=f"Failed to convert route to GPX: {exc}",
         ) from exc
 
-    # 4. Write GPX to a temp file and upload to Garmin Connect
+    # 4. Write GPX to a temp file and upload as a Garmin course
     try:
         with tempfile.NamedTemporaryFile(suffix=".gpx", delete=False) as tmp:
             tmp.write(gpx_bytes)
             tmp.flush()
             tmp_path = tmp.name
 
-        upload_response = garmin_client.upload_activity(tmp_path)
+        # Use the Garmin Connect course-service API to create a course
+        # (not upload_activity, which creates an activity instead of a course)
+        with open(tmp_path, "rb") as f:
+            files = {"file": (f"{route_name}.gpx", f, "application/gpx+xml")}
+            upload_response = garmin_client.client.post(
+                "connectapi",
+                "/course-service/course",
+                files=files,
+                api=True,
+            )
     except Exception as exc:
         logger.error(
             "Garmin course upload failed for route %s, user %s: %s",
@@ -360,6 +369,13 @@ async def sync_route_to_garmin(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload course to Garmin Connect: {exc}",
         ) from exc
+    finally:
+        # Clean up temp file
+        try:
+            import os
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
     # 5. Extract the course/activity ID from the upload response
     garmin_course_id = _extract_course_id(upload_response)
@@ -385,18 +401,22 @@ async def sync_route_to_garmin(
 
 
 def _extract_course_id(upload_response: dict | list | None) -> int:
-    """Extract the Garmin activity/course ID from the upload response.
+    """Extract the Garmin course ID from the course-service response.
 
-    The garminconnect library returns a dict with a
-    ``detailedImportResult`` key containing the uploaded activity details.
-
-    Falls back to a sentinel value of 0 if the response structure is
-    unexpected, so the upload is still recorded.
+    The course-service API returns a dict with ``courseId`` for the created course.
+    Falls back to checking ``detailedImportResult`` (activity upload format)
+    and then a sentinel value of 0.
     """
     if not upload_response:
         return 0
 
     if isinstance(upload_response, dict):
+        # Course-service response: {"courseId": 12345, "courseName": "...", ...}
+        course_id = upload_response.get("courseId")
+        if course_id is not None:
+            return int(course_id)
+
+        # Fallback: activity upload response format
         detailed = upload_response.get("detailedImportResult", {})
         successes = detailed.get("successes", [])
         if successes and isinstance(successes, list):
@@ -405,7 +425,7 @@ def _extract_course_id(upload_response: dict | list | None) -> int:
             if internal_id is not None:
                 return int(internal_id)
 
-        # Fallback: check for a top-level activityId
+        # Fallback: top-level activityId
         activity_id = upload_response.get("activityId")
         if activity_id is not None:
             return int(activity_id)

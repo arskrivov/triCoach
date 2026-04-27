@@ -100,6 +100,21 @@ export function SavedRoutes({ workoutContext }: SavedRoutesProps) {
     setRoutes((prev) => prev.filter((r) => r.id !== id));
   }
 
+  async function downloadGpx(id: string, name: string) {
+    try {
+      const res = await api.get(`/routes/${id}/gpx`, { responseType: "blob" });
+      const blob = new Blob([res.data], { type: "application/gpx+xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${name.replace(/\s+/g, "_")}.gpx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Failed to download GPX file.");
+    }
+  }
+
   async function handleSelect(routeId: string) {
     if (!workoutContext) return;
     setSelectingId(routeId);
@@ -237,10 +252,7 @@ export function SavedRoutes({ workoutContext }: SavedRoutesProps) {
                       </Button>
                     ) : (
                       <>
-                        <a href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/routes/${r.id}/gpx`}
-                          target="_blank" rel="noopener noreferrer">
-                          <Button variant="outline" size="sm">GPX</Button>
-                        </a>
+                        <Button variant="outline" size="sm" onClick={() => downloadGpx(r.id, r.name)}>GPX</Button>
                         <Button variant="ghost" size="sm" onClick={() => del(r.id)}
                           className="text-red-400 hover:text-red-600">Del</Button>
                       </>

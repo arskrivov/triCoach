@@ -326,8 +326,13 @@ class TestConvertGeojsonToFitCourse:
 class TestExtractCourseId:
     """Tests for _extract_course_id helper – Requirements 4.1, 4.2."""
 
+    def test_course_service_response(self):
+        """Course-service API response with courseId."""
+        response = {"courseId": 12345678, "courseName": "My Course"}
+        assert _extract_course_id(response) == 12345678
+
     def test_standard_garmin_response(self):
-        """Typical Garmin Connect upload response with detailedImportResult."""
+        """Fallback: activity upload response with detailedImportResult."""
         response = {
             "detailedImportResult": {
                 "successes": [{"internalId": 12345678}],
@@ -452,10 +457,9 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_garmin_client.upload_activity.return_value = {
-            "detailedImportResult": {
-                "successes": [{"internalId": 55555}],
-            }
+        mock_garmin_client.client.post.return_value = {
+            "courseId": 55555,
+            "courseName": "Morning Ride",
         }
 
         with patch(
@@ -518,7 +522,7 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_garmin_client.upload_activity.side_effect = RuntimeError(
+        mock_garmin_client.client.post.side_effect = RuntimeError(
             "Garmin Connect returned 503"
         )
 
@@ -539,10 +543,9 @@ class TestSyncRouteToGarmin:
         sb = _make_mock_sb(route_data=[_SAMPLE_ROUTE])
 
         mock_garmin_client = MagicMock()
-        mock_garmin_client.upload_activity.return_value = {
-            "detailedImportResult": {
-                "successes": [{"internalId": 77777}],
-            }
+        mock_garmin_client.client.post.return_value = {
+            "courseId": 77777,
+            "courseName": "Morning Ride",
         }
 
         # Capture the update chain mock before the call

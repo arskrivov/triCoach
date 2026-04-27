@@ -674,6 +674,12 @@ async def enrich_week_workouts(
         else:
             to_enrich.append(w)
 
+    # If all workouts already have content, re-enrich them all
+    # (user clicked Generate & Sync again to get better content)
+    if not to_enrich and already_rich:
+        to_enrich = already_rich
+        already_rich = []
+
     if not to_enrich:
         return EnrichWeekResponse(
             plan_id=plan_id,
