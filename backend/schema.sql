@@ -148,6 +148,7 @@ create table if not exists athlete_profile (
   overhead_press_1rm_kg               float,
   mobility_sessions_per_week_target   int default 2,
   weekly_training_hours               float default 8,
+  notes                               text,
   updated_at                          timestamptz default now()
 );
 

@@ -34,6 +34,7 @@ class EffectiveAthleteProfile(BaseModel):
     overhead_press_1rm_kg: float | None = None
     mobility_sessions_per_week_target: int = DEFAULT_MOBILITY_TARGET
     weekly_training_hours: float | None = None
+    notes: str | None = None
     field_sources: dict[str, str] = Field(default_factory=dict)
     garmin_values: dict[str, float | int | None] = Field(default_factory=dict)
 
@@ -361,4 +362,9 @@ async def get_effective_athlete_profile(user_id: str, sb: AsyncClient) -> Effect
 
     values, field_sources, garmin_values = merge_profile_fields(manual, derived_values)
 
-    return EffectiveAthleteProfile(**values, field_sources=field_sources, garmin_values=garmin_values)
+    return EffectiveAthleteProfile(
+        **values,
+        notes=manual.notes if manual else None,
+        field_sources=field_sources,
+        garmin_values=garmin_values,
+    )

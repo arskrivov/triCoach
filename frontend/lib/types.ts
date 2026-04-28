@@ -196,6 +196,7 @@ export interface AthleteProfile {
   overhead_press_1rm_kg: number | null;
   mobility_sessions_per_week_target: number;
   weekly_training_hours: number | null;
+  notes: string | null;
   field_sources: Record<string, "manual" | "garmin" | "default">;
   garmin_values: Record<string, number | null>;
 }

@@ -15,6 +15,7 @@ from typing import Any
 from supabase import AsyncClient
 
 from app.models import TrainingPlanRow, WorkoutRow
+from app.services.discipline_mapping import normalize_discipline
 from app.services.garmin_workout_sync import (
     delete_workout_from_garmin,
     sync_workout_to_garmin,
@@ -154,8 +155,12 @@ async def modify_workout(
         update["name"] = new_name
         changes.append(f"name → '{new_name}'")
     if new_discipline:
-        update["discipline"] = new_discipline
-        changes.append(f"discipline → {new_discipline}")
+        canonical_discipline = normalize_discipline(
+            new_discipline,
+            fallback=str(workout.get("discipline") or "RUN"),
+        )
+        update["discipline"] = canonical_discipline
+        changes.append(f"discipline → {canonical_discipline}")
     if new_duration_minutes is not None:
         update["estimated_duration_seconds"] = new_duration_minutes * 60
         changes.append(f"duration → {new_duration_minutes}min")
@@ -221,11 +226,12 @@ async def add_workout(
 
     now = datetime.now(timezone.utc).isoformat()
     normalized_content = normalize_workout_content(content or {})
+    canonical_discipline = normalize_discipline(discipline, fallback="RUN")
     workout = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
         "name": name,
-        "discipline": discipline,
+        "discipline": canonical_discipline,
         "builder_type": builder_type,
         "description": reason,
         "content": normalized_content,
@@ -260,7 +266,7 @@ async def add_workout(
     except Exception as exc:
         logger.warning("Garmin sync failed for new workout %s: %s", workout_id, exc)
 
-    return f"Added '{name}' ({discipline}, {duration_minutes}min) on {scheduled_date}."
+    return f"Added '{name}' ({canonical_discipline}, {duration_minutes}min) on {scheduled_date}."
 
 
 # ── Tool definitions for OpenAI function calling ─────────────────────────────

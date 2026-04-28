@@ -18,6 +18,7 @@ from supabase import AsyncClient
 
 from app.config import settings
 from app.models import DailyHealthRow, TrainingPlanRow, WorkoutRow
+from app.services.discipline_mapping import normalize_discipline
 from app.services.garmin_workout_sync import (
     delete_workout_from_garmin,
     sync_workout_to_garmin,
@@ -88,6 +89,8 @@ RULES:
 - Each adjustment must reference a specific workout_id from the provided plan state.
 - If creating a new workout to redistribute load, set workout_id to null.
 - The new_discipline must be one of the valid disciplines listed above.
+- Use canonical discipline values exactly. Do not output aliases like `bike`,
+  `cycling`, `running`, `swimming`, or `gym`.
 - Always include a clear reason for each adjustment.
 - The summary should be a concise, athlete-friendly explanation of all changes.
 - If the athlete's message is unclear, make conservative adjustments and explain \
@@ -471,9 +474,13 @@ async def _apply_adjustments(
             now = datetime.now(timezone.utc).isoformat()
             new_duration_min = adj.get("new_duration_minutes")
             update_payload = {}
+            current_discipline = str(workout.get("discipline") or "RUN")
 
             if adj.get("new_discipline"):
-                update_payload["discipline"] = adj["new_discipline"]
+                update_payload["discipline"] = normalize_discipline(
+                    adj["new_discipline"],
+                    fallback=current_discipline,
+                )
             if adj.get("new_name"):
                 update_payload["name"] = adj["new_name"]
             if adj.get("new_content") and isinstance(adj["new_content"], dict):
@@ -519,7 +526,10 @@ async def _apply_adjustments(
                 "id": str(uuid.uuid4()),
                 "user_id": user_id,
                 "name": adj.get("new_name", "Adjusted Workout"),
-                "discipline": adj.get("new_discipline", "RUN"),
+                "discipline": normalize_discipline(
+                    adj.get("new_discipline"),
+                    fallback="RUN",
+                ),
                 "builder_type": "endurance",
                 "description": adj.get("reason", "Added by coach adjustment"),
                 "content": adj.get("new_content", {}),

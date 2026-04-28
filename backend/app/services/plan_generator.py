@@ -19,6 +19,7 @@ from supabase import AsyncClient
 from app.config import settings
 from app.models import ActivityRow, DailyHealthRow, GoalRow
 from app.services.athlete_profile import get_effective_athlete_profile
+from app.services.discipline_mapping import VALID_DISCIPLINES, normalize_discipline
 from app.services.fitness import get_fitness_timeline
 from app.services.garmin_workout_sync import (
     delete_plan_workouts_from_garmin,
@@ -26,8 +27,6 @@ from app.services.garmin_workout_sync import (
 )
 
 logger = logging.getLogger(__name__)
-
-VALID_DISCIPLINES = {"SWIM", "RUN", "RIDE_ROAD", "RIDE_GRAVEL", "STRENGTH", "YOGA", "MOBILITY"}
 
 DEFAULT_PLAN_WEEKS = 12
 
@@ -89,6 +88,8 @@ RECOVERY WEEKS:
 - Insert a recovery week every 3-4 load weeks.
 - Recovery weeks reduce volume by 30-50% compared to the preceding load week.
 - Maintain some intensity during recovery weeks but reduce total stress.
+- Treat athlete notes, injuries, pain points, and equipment constraints as \
+hard constraints when selecting workouts.
 
 DISCIPLINE DISTRIBUTION:
 - Distribute weekly hours across disciplines based on the race type.
@@ -241,6 +242,8 @@ async def build_plan_context(user_id: str, goal: GoalRow, sb: AsyncClient, all_r
         profile_lines.append(f"- Bench 1RM: {profile.bench_1rm_kg} kg")
     if profile.overhead_press_1rm_kg:
         profile_lines.append(f"- OHP 1RM: {profile.overhead_press_1rm_kg} kg")
+    if profile.notes:
+        profile_lines.append(f"- Athlete notes: {profile.notes}")
     has_profile_data = any([
         profile.ftp_watts, profile.threshold_pace_sec_per_km,
         profile.swim_css_sec_per_100m, profile.max_hr,
@@ -434,20 +437,10 @@ def parse_plan_response(ai_text: str) -> dict:
                 continue
             # Ensure valid discipline
             if workout.get("discipline") not in VALID_DISCIPLINES:
-                # Try to map common AI outputs
-                disc = str(workout.get("discipline", "")).upper()
-                if "BIKE" in disc or "CYCLE" in disc or "CYCLING" in disc:
-                    workout["discipline"] = "RIDE_ROAD"
-                elif "YOGA" in disc:
-                    workout["discipline"] = "YOGA"
-                elif disc in VALID_DISCIPLINES:
-                    workout["discipline"] = disc
-                else:
-                    workout["discipline"] = "RUN"
-                    logger.warning(
-                        "Unknown discipline '%s' in AI response, defaulting to RUN",
-                        workout.get("discipline"),
-                    )
+                workout["discipline"] = normalize_discipline(
+                    workout.get("discipline"),
+                    fallback="RUN",
+                )
             # Ensure required fields
             if "day" not in workout:
                 workout["day"] = 0
@@ -809,6 +802,8 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
                         batch_prompt += f"\nFTP: {profile.ftp_watts}W"
                     if profile.threshold_pace_sec_per_km:
                         batch_prompt += f"\nThreshold pace: {_fmt_pace(profile.threshold_pace_sec_per_km)}"
+                    if profile.notes:
+                        batch_prompt += f"\nAthlete notes: {profile.notes}"
 
                     try:
                         batch_response = client.responses.create(

@@ -200,6 +200,8 @@ async def build_context_text(user_id: str, sb: AsyncClient) -> str:
     if profile.overhead_press_1rm_kg:
         profile_lines.append(f"- OHP 1RM: {profile.overhead_press_1rm_kg} kg")
     profile_lines.append(f"- Mobility target: {profile.mobility_sessions_per_week_target} sessions/week")
+    if profile.notes:
+        profile_lines.append(f"- Athlete notes: {profile.notes}")
 
     # Goals
     goals_lines = ["## Goals"]

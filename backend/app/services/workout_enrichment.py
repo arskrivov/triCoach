@@ -149,6 +149,7 @@ def build_workout_enrichment_prompt(
 ) -> str:
     current_phase, phase_focus = _phase_context(plan, week_number)
     profile_context = _profile_context_lines(profile)
+    athlete_notes = str(getattr(profile, "notes", "") or "").strip()
     race_context = _race_context_lines(plan)
 
     workout_list = []
@@ -167,6 +168,7 @@ Plan: {plan.name}
 Week {week_number} — {current_phase} phase
 Phase focus: {phase_focus}
 Athlete thresholds: {', '.join(profile_context) if profile_context else 'No threshold data available'}
+Athlete notes: {athlete_notes or 'None'}
 Races: {chr(10).join(race_context) if race_context else 'None'}
 
 Workouts to enrich:
@@ -210,6 +212,8 @@ MANDATORY FORMAT RULES:
 - "cooldown" MUST be an object with duration_min, zone, description. NEVER a string.
 - Each main set entry MUST have duration_min (number), zone (string), description (string).
 - Every field must be present. No nulls, no omissions.
+- Treat athlete notes as real constraints. If notes mention pain, injury, or
+  movement limits, adjust exercise selection, load, and intensity accordingly.
 
 CONTENT QUALITY RULES:
 

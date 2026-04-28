@@ -95,12 +95,12 @@ class TestConvertWorkoutToGarmin:
         workout = _make_workout(discipline="SWIM", name="Drill Session")
         result = convert_workout_to_garmin(workout)
         assert result["sportType"]["sportTypeKey"] == "swimming"
-        assert result["sportType"]["sportTypeId"] == 3
+        assert result["sportType"]["sportTypeId"] == 4
 
     def test_strength_sport_type(self):
         workout = _make_workout(discipline="STRENGTH", name="Upper Body")
         result = convert_workout_to_garmin(workout)
-        assert result["sportType"]["sportTypeKey"] == "fitness_equipment"
+        assert result["sportType"]["sportTypeKey"] == "strength_training"
 
     def test_yoga_sport_type(self):
         workout = _make_workout(discipline="YOGA", name="Recovery Yoga")
@@ -211,7 +211,7 @@ class TestSportTypeMapping:
         """Swim workouts should use Garmin's swimming sport type."""
         workout = _make_workout(discipline="SWIM", name="Pool Session")
         result = convert_workout_to_garmin(workout)
-        assert result["sportType"]["sportTypeId"] == 3
+        assert result["sportType"]["sportTypeId"] == 4
         assert result["sportType"]["sportTypeKey"] == "swimming"
         # Segment should also have swimming sport type
         assert result["workoutSegments"][0]["sportType"]["sportTypeKey"] == "swimming"
@@ -239,12 +239,13 @@ class TestSportTypeMapping:
         assert result["sportType"]["sportTypeId"] == 2
         assert result["sportType"]["sportTypeKey"] == "cycling"
 
-    def test_strength_uses_fitness_equipment_sport_type(self):
-        """Strength workouts should use Garmin's fitness_equipment sport type."""
+    def test_strength_uses_strength_training_sport_type(self):
+        """Strength workouts should use Garmin's dedicated strength sport type."""
         workout = _make_workout(discipline="STRENGTH", name="Leg Day")
         result = convert_workout_to_garmin(workout)
-        assert result["sportType"]["sportTypeId"] == 6
-        assert result["sportType"]["sportTypeKey"] == "fitness_equipment"
+        assert result["sportType"]["sportTypeId"] == 5
+        assert result["sportType"]["sportTypeKey"] == "strength_training"
+        assert result["workoutSegments"][0]["sportType"]["sportTypeKey"] == "strength_training"
 
     def test_yoga_uses_other_sport_type(self):
         """Yoga workouts should use Garmin's other sport type."""

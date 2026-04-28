@@ -257,6 +257,7 @@ class AthleteProfileSchema(BaseModel):
     overhead_press_1rm_kg: float | None
     mobility_sessions_per_week_target: int
     weekly_training_hours: float | None
+    notes: str | None
     field_sources: dict[str, str]
     garmin_values: dict[str, float | int | None]
 
@@ -274,6 +275,7 @@ class AthleteProfileUpdate(BaseModel):
     overhead_press_1rm_kg: float | None = None
     mobility_sessions_per_week_target: int | None = None
     weekly_training_hours: float | None = None
+    notes: str | None = None
 
 
 @router.get("/profile/athlete", response_model=AthleteProfileSchema)

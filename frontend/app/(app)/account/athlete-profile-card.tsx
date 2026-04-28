@@ -158,6 +158,7 @@ const EMPTY: AthleteProfile = {
   overhead_press_1rm_kg: null,
   mobility_sessions_per_week_target: 2,
   weekly_training_hours: null,
+  notes: null,
   field_sources: {},
   garmin_values: {},
 };
@@ -181,6 +182,10 @@ export function AthleteProfileCard() {
 
   function set(key: NumericProfileKey, val: string) {
     setProfile((p) => ({ ...p, [key]: val === "" ? null : Number(val) }));
+  }
+
+  function setNotes(val: string) {
+    setProfile((p) => ({ ...p, notes: val === "" ? null : val }));
   }
 
   async function save() {
@@ -260,6 +265,32 @@ export function AthleteProfileCard() {
               </div>
             </fieldset>
           ))}
+
+          <fieldset>
+            <legend className="text-sm font-semibold text-foreground mb-3">
+              Athlete Notes
+            </legend>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="athlete-notes" className="text-sm">
+                  Health and coaching notes
+                </Label>
+                <SourceBadge source="manual" />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Injuries, pain, contraindications, equipment limits, or coaching
+                preferences. Example: knee pain, avoid deep squats and downhill
+                running.
+              </p>
+              <textarea
+                id="athlete-notes"
+                value={profile.notes ?? ""}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add constraints the AI coach should respect when building workouts."
+                className="min-h-32 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs"
+              />
+            </div>
+          </fieldset>
         </div>
 
         <div className="flex items-center gap-3 mt-6">

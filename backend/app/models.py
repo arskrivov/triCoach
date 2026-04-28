@@ -96,6 +96,7 @@ class AthleteProfileRow(BaseModel):
     overhead_press_1rm_kg: float | None = None
     mobility_sessions_per_week_target: int = 2
     weekly_training_hours: float | None = None
+    notes: str | None = None
 
 
 class GoalRow(BaseModel):

@@ -31,10 +31,13 @@ logger = logging.getLogger(__name__)
 
 _SPORT_TYPE_MAP: dict[str, dict[str, Any]] = {
     "RUN": {"sportTypeId": 1, "sportTypeKey": "running", "displayOrder": 1},
-    "SWIM": {"sportTypeId": 3, "sportTypeKey": "swimming", "displayOrder": 3},
+    # Garmin workout-service uses swimming sportTypeId=4 here.
+    "SWIM": {"sportTypeId": 4, "sportTypeKey": "swimming", "displayOrder": 3},
     "RIDE_ROAD": {"sportTypeId": 2, "sportTypeKey": "cycling", "displayOrder": 2},
     "RIDE_GRAVEL": {"sportTypeId": 2, "sportTypeKey": "cycling", "displayOrder": 2},
-    "STRENGTH": {"sportTypeId": 6, "sportTypeKey": "fitness_equipment", "displayOrder": 6},
+    # Garmin workout-service uses a dedicated strength type here; exporting
+    # as fitness_equipment makes strength workouts appear as generic cardio/gym.
+    "STRENGTH": {"sportTypeId": 5, "sportTypeKey": "strength_training", "displayOrder": 4},
     "YOGA": {"sportTypeId": 8, "sportTypeKey": "other", "displayOrder": 8},
     "MOBILITY": {"sportTypeId": 8, "sportTypeKey": "other", "displayOrder": 8},
 }

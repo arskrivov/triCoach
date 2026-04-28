@@ -167,6 +167,10 @@ WORKOUT PROGRAM REQUIREMENTS:
   - mobility/yoga: name exact poses/drills and hold times
 - Avoid vague content like "core work", "easy ride", or "mobility session"
   without specifics.
+- Use canonical discipline values exactly in tool calls:
+  `SWIM`, `RUN`, `RIDE_ROAD`, `RIDE_GRAVEL`, `STRENGTH`, `YOGA`, `MOBILITY`.
+- Do not use aliases like `bike`, `cycling`, `running`, `swimming`, or `gym`
+  in tool arguments.
 
 Always tell the athlete what you changed after using a tool.
 """

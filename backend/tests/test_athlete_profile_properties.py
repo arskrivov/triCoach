@@ -291,6 +291,24 @@ class TestAthleteProfileSchemas:
             "AthleteProfileUpdate missing 'weekly_training_hours' field"
         )
 
+    def test_athlete_profile_schema_has_notes(self):
+        """AthleteProfileSchema includes notes field."""
+        from app.routers.activities import AthleteProfileSchema
+
+        fields = AthleteProfileSchema.model_fields
+        assert "notes" in fields, (
+            "AthleteProfileSchema missing 'notes' field"
+        )
+
+    def test_athlete_profile_update_has_notes(self):
+        """AthleteProfileUpdate includes notes field."""
+        from app.routers.activities import AthleteProfileUpdate
+
+        fields = AthleteProfileUpdate.model_fields
+        assert "notes" in fields, (
+            "AthleteProfileUpdate missing 'notes' field"
+        )
+
     def test_merge_all_none_returns_default_sources(self):
         """When manual is None and all derived values are None, all sources
         are 'default' and garmin_values are all None."""

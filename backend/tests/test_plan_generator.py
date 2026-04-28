@@ -1,14 +1,19 @@
 """Unit tests for plan_generator service."""
 
 import json
+from datetime import date, timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.services.plan_generator import (
     VALID_DISCIPLINES,
+    build_plan_context,
     parse_plan_response,
     _safe_avg,
 )
+from app.models import GoalRow
 
 
 # ---------------------------------------------------------------------------
@@ -185,3 +190,58 @@ class TestSafeAvg:
 
     def test_mixed_none_and_values(self):
         assert _safe_avg([10, None, 30]) == 20.0
+
+
+@pytest.mark.asyncio
+async def test_build_plan_context_includes_athlete_notes(monkeypatch):
+    profile = SimpleNamespace(
+        ftp_watts=None,
+        threshold_pace_sec_per_km=None,
+        swim_css_sec_per_100m=None,
+        max_hr=None,
+        resting_hr=None,
+        weight_kg=None,
+        squat_1rm_kg=None,
+        deadlift_1rm_kg=None,
+        bench_1rm_kg=None,
+        overhead_press_1rm_kg=None,
+        weekly_training_hours=8,
+        notes="Right knee pain: avoid heavy plyometrics and downhill running.",
+    )
+
+    async def fake_profile(*_args, **_kwargs):
+        return profile
+
+    async def fake_fitness_timeline(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr("app.services.plan_generator.get_effective_athlete_profile", fake_profile)
+    monkeypatch.setattr("app.services.plan_generator.get_fitness_timeline", fake_fitness_timeline)
+
+    def _chain(data):
+        result = MagicMock()
+        result.data = data
+
+        query = MagicMock()
+        query.select.return_value = query
+        query.eq.return_value = query
+        query.gte.return_value = query
+        query.order.return_value = query
+        query.execute = AsyncMock(return_value=result)
+        return query
+
+    sb = MagicMock()
+    sb.table.side_effect = lambda _name: _chain([])
+
+    goal = GoalRow(
+        id="goal-1",
+        user_id="user-1",
+        description="Spring Half Marathon",
+        target_date=(date.today() + timedelta(days=70)).isoformat(),
+        sport="RUN",
+        is_active=True,
+    )
+
+    context = await build_plan_context("user-1", goal, sb)
+
+    assert "Athlete notes: Right knee pain: avoid heavy plyometrics and downhill running." in context

@@ -29,6 +29,7 @@ const mockProfile = {
   overhead_press_1rm_kg: 60,
   mobility_sessions_per_week_target: 2,
   weekly_training_hours: 12,
+  notes: "Mild knee pain. Avoid deep knee flexion and downhill running.",
   field_sources: {
     ftp_watts: "manual" as const,
     threshold_pace_sec_per_km: "garmin" as const,
@@ -300,5 +301,35 @@ describe("AthleteProfileCard", () => {
     fireEvent.change(ftpInput, { target: { value: "" } });
 
     expect(ftpInput).toHaveValue(null);
+  });
+
+  it("renders and saves athlete notes", async () => {
+    render(<AthleteProfileCard />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/health and coaching notes/i)).toBeInTheDocument();
+    });
+
+    const notesInput = screen.getByLabelText(/health and coaching notes/i);
+    expect(notesInput).toHaveValue(mockProfile.notes);
+
+    fireEvent.change(notesInput, {
+      target: { value: "Left knee pain. Avoid downhill running and heavy lunges." },
+    });
+
+    expect(notesInput).toHaveValue(
+      "Left knee pain. Avoid downhill running and heavy lunges."
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /save profile/i }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith(
+        "/activities/profile/athlete",
+        expect.objectContaining({
+          notes: "Left knee pain. Avoid downhill running and heavy lunges.",
+        })
+      );
+    });
   });
 });
