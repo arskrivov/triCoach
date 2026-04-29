@@ -22,6 +22,7 @@ import {
   LineChart,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatSleepScore,
   formatHRV,
@@ -198,10 +199,43 @@ function MiniSparkline({
 export function RecoveryOverviewCard({
   recovery,
   analysis,
+  loading = false,
 }: {
   recovery: RecoveryOverview & { sparkline: HealthSparklinePoint[] };
   analysis: string | null;
+  loading?: boolean;
 }) {
+  if (loading) {
+    return (
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className={SECTION_LABEL_CLASS}>Recovery</p>
+              <CardTitle className="mt-1 text-base">Body Response</CardTitle>
+            </div>
+            <Skeleton className="h-7 w-24 rounded-full" />
+          </div>
+          <Skeleton className="h-12 w-full" />
+        </CardHeader>
+
+        <CardContent className="grid gap-5">
+          <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton key={index} className="h-24 rounded-2xl" />
+            ))}
+          </div>
+          <Skeleton className="h-56 rounded-2xl" />
+          <div className="grid gap-1.5">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-16 rounded-xl" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const sleepFmt = formatSleepScore(recovery.last_night.sleep_score);
   const analysisText = analysis ?? recovery.headline;
   const sleepHours = recovery.last_night.sleep_duration_hours;

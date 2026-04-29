@@ -7,6 +7,7 @@
  * Optionally displays an AI-generated activity analysis from the briefing.
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getActivityStatusColor, calculateDelta } from "@/lib/format";
 import type { ActivityOverview, DisciplineSummary, FitnessPoint } from "@/lib/types";
 import { FitnessChart } from "@/components/fitness-chart";
@@ -130,11 +131,44 @@ export function ActivityOverviewCard({
   activity,
   analysis,
   fitnessTimeline,
+  loading = false,
 }: {
   activity: ActivityOverview;
   analysis: string | null;
   fitnessTimeline?: FitnessPoint[];
+  loading?: boolean;
 }) {
+  if (loading) {
+    return (
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className={SECTION_LABEL_CLASS}>Activity</p>
+              <CardTitle className="mt-1 text-base">Training Load</CardTitle>
+            </div>
+            <Skeleton className="h-7 w-28 rounded-full" />
+          </div>
+          <Skeleton className="h-12 w-full" />
+        </CardHeader>
+
+        <CardContent className="grid gap-5">
+          <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton key={index} className="h-24 rounded-2xl" />
+            ))}
+          </div>
+          <div className="grid gap-1.5">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-16 rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="h-72 rounded-2xl" />
+        </CardContent>
+      </Card>
+    );
+  }
+
   const { last_7d, fitness } = activity;
   const analysisText = analysis ?? activity.headline;
   const tsb = fitness.tsb;

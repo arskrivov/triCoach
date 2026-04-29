@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.services.garmin import is_garmin_auth_error
 from app.services.garmin_sync import _is_transient, garmin_retry
 
 
@@ -43,6 +44,14 @@ class TestIsTransient:
 
     def test_generic_error_not_transient(self):
         assert _is_transient(Exception("Something went wrong")) is False
+
+
+class TestGarminAuthErrorDetection:
+    def test_missing_login_password_is_treated_as_auth_error(self):
+        assert is_garmin_auth_error(Exception("login/password is not set")) is True
+
+    def test_authentication_required_is_treated_as_auth_error(self):
+        assert is_garmin_auth_error(Exception("Authentication required")) is True
 
 
 # ---------------------------------------------------------------------------

@@ -1,13 +1,15 @@
 /**
  * CoachBriefingCard — displays the daily AI or heuristic coaching briefing.
  *
- * Shows three sections: today's recommendations, sleep analysis, and activity
- * analysis. Renders a placeholder when no briefing is available (before 06:00
- * or when no Garmin data has been synced today).
+ * Shows a compact readout: a short summary, 1-2 workout suggestions,
+ * and a watchout section.
+ * Renders a placeholder when no briefing is available (before 06:00 or when
+ * no Garmin data has been synced today).
  *
  * @param briefing - The DashboardBriefing from the API, or null if unavailable.
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardBriefing } from "@/lib/types";
 
 const PANEL_LABEL_CLASS = "pl-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground";
@@ -39,7 +41,45 @@ function BriefingPanel({
   );
 }
 
-export function CoachBriefingCard({ briefing }: { briefing: DashboardBriefing | null }) {
+export function CoachBriefingCard({
+  briefing,
+  loading = false,
+}: {
+  briefing: DashboardBriefing | null;
+  loading?: boolean;
+}) {
+  if (loading) {
+    return (
+      <Card className="border-border shadow-sm">
+        <CardHeader className="pb-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Morning Briefing</p>
+            <CardTitle className="mt-1 text-lg">Coach Readout</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <div className="rounded-[1.75rem] border border-border bg-card/80 px-5 py-5">
+            <Skeleton className="h-3 w-28" />
+            <div className="mt-4 grid gap-4">
+              <div className="rounded-2xl border border-border bg-muted/80 px-4 py-4">
+                <Skeleton className="h-16 w-full" />
+                <div className="mt-4 grid gap-2">
+                  {Array.from({ length: 2 }).map((_, index) => (
+                    <Skeleton key={index} className="h-10 w-full" />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 rounded-2xl border border-border px-4 py-3">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="mt-3 h-10 w-full" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (!briefing) {
     return (
       <Card className="border-border shadow-sm">
@@ -61,6 +101,11 @@ export function CoachBriefingCard({ briefing }: { briefing: DashboardBriefing | 
     );
   }
 
+  const summaryText = [briefing.sleep_analysis, briefing.activity_analysis]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <Card className="border-border shadow-sm">
       <CardHeader className="pb-3">
@@ -73,21 +118,19 @@ export function CoachBriefingCard({ briefing }: { briefing: DashboardBriefing | 
         </div>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <BriefingPanel label="Today's Plan" accentClassName="bg-[--status-positive]">
-          <div className="mt-3 grid gap-3 xl:grid-cols-2">
-            {briefing.recommendations.map((item, index) => (
-              <div
-                key={item}
-                className="flex gap-3 rounded-2xl border border-border bg-muted/80 px-4 py-4"
-              >
-                <span
-                  className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[--status-positive]/15 text-[11px] font-semibold text-[--status-positive]"
+        <BriefingPanel label="Today's Readout" accentClassName="bg-[--status-positive]">
+          <div className="mt-3 rounded-2xl border border-border bg-muted/80 px-4 py-4">
+            <p className={BODY_TEXT_CLASS}>{summaryText}</p>
+            <div className="mt-4 grid gap-2">
+              {briefing.recommendations.slice(0, 2).map((item) => (
+                <div
+                  key={item}
+                  className="rounded-2xl border border-border bg-card/70 px-4 py-3"
                 >
-                  {index + 1}
-                </span>
-                <p className={BODY_TEXT_CLASS}>{item}</p>
-              </div>
-            ))}
+                  <p className={BODY_TEXT_CLASS}>{item}</p>
+                </div>
+              ))}
+            </div>
           </div>
 
           {briefing.caution && (

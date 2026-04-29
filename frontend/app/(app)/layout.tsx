@@ -5,9 +5,8 @@ import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 import { postGarminSync } from "@/lib/garmin-sync-api";
 import {
-  dispatchGarminSyncCompleted,
-  dispatchGarminSyncFailed,
-  dispatchGarminSyncStarted,
+  runGarminSyncOperation,
+  useGarminSyncState,
 } from "@/lib/garmin-sync";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -21,8 +20,8 @@ const NAV_ITEMS = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
+  const { isSyncing } = useGarminSyncState();
   const currentNav = useMemo(
     () => NAV_ITEMS.find(({ href }) => pathname === href || pathname.startsWith(`${href}/`)),
     [pathname],
@@ -36,25 +35,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   async function triggerSync() {
-    setSyncing(true);
     setSyncMsg("");
-    dispatchGarminSyncStarted("sidebar");
     try {
-      const res = await postGarminSync("/sync/now", { timezone: getTimezone() });
+      const res = await runGarminSyncOperation(
+        "sidebar",
+        () => postGarminSync("/sync/now", { timezone: getTimezone() }),
+      );
       setSyncMsg(`Synced ${res.activities_synced} activities and ${res.health_days_synced} health days.`);
-      dispatchGarminSyncCompleted({
-        activitiesSynced: res.activities_synced,
-        healthDaysSynced: res.health_days_synced,
-        source: "sidebar",
-      });
       setTimeout(() => setSyncMsg(""), 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Sync failed.";
       setSyncMsg(msg);
-      dispatchGarminSyncFailed({ message: msg, source: "sidebar" });
       setTimeout(() => setSyncMsg(""), 3000);
-    } finally {
-      setSyncing(false);
     }
   }
 
@@ -109,11 +101,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <ThemeToggle />
           <button
             onClick={triggerSync}
-            disabled={syncing}
+            disabled={isSyncing}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className={syncing ? "inline-block animate-spin" : "inline-block"}>↻</span>
-            {syncMsg || (syncing ? "Syncing…" : "Sync Garmin")}
+            <span className={isSyncing ? "inline-block animate-spin" : "inline-block"}>↻</span>
+            {syncMsg || (isSyncing ? "Syncing…" : "Sync Garmin")}
           </button>
         </div>
       </aside>

@@ -17,7 +17,9 @@ import pytest
 # Import private helpers directly for unit testing
 from app.services.dashboard import (
     BRIEFING_SYSTEM_PROMPT,
+    _build_ai_prompt,
     _activity_status,
+    _planned_workouts_for_briefing_date,
     _recovery_status,
     _today_data_signature,
 )
@@ -197,20 +199,33 @@ def _make_health_row(**kwargs):
     return row
 
 
+def _make_workout_row(**kwargs):
+    row = MagicMock()
+    row.id = kwargs.get("id", "workout-1")
+    row.name = kwargs.get("name", "Easy Run")
+    row.discipline = kwargs.get("discipline", "RUN")
+    row.scheduled_date = kwargs.get("scheduled_date", "2024-01-15")
+    row.estimated_duration_seconds = kwargs.get("estimated_duration_seconds", 3600)
+    row.estimated_tss = kwargs.get("estimated_tss", 50)
+    row.description = kwargs.get("description", "Steady aerobic work")
+    row.content = kwargs.get("content", {})
+    return row
+
+
 class TestTodayDataSignature:
     def test_returns_none_when_no_data(self):
-        result = _today_data_signature(None, [], date(2024, 1, 15), "UTC")
+        result = _today_data_signature(None, [], [], date(2024, 1, 15), "UTC")
         assert result is None
 
     def test_returns_hash_when_health_present(self):
         health = _make_health_row()
-        result = _today_data_signature(health, [], date(2024, 1, 15), "UTC")
+        result = _today_data_signature(health, [], [], date(2024, 1, 15), "UTC")
         assert result is not None
         assert len(result) == 64  # SHA256 hex digest
 
     def test_returns_hash_when_activities_present(self):
         activity = _make_activity_row()
-        result = _today_data_signature(None, [activity], date(2024, 1, 15), "UTC")
+        result = _today_data_signature(None, [activity], [], date(2024, 1, 15), "UTC")
         assert result is not None
         assert len(result) == 64
 
@@ -218,35 +233,35 @@ class TestTodayDataSignature:
         health = _make_health_row()
         activity = _make_activity_row()
         today = date(2024, 1, 15)
-        result1 = _today_data_signature(health, [activity], today, "UTC")
-        result2 = _today_data_signature(health, [activity], today, "UTC")
+        result1 = _today_data_signature(health, [activity], [], today, "UTC")
+        result2 = _today_data_signature(health, [activity], [], today, "UTC")
         assert result1 == result2
 
     def test_different_date_produces_different_hash(self):
         health = _make_health_row()
-        result1 = _today_data_signature(health, [], date(2024, 1, 15), "UTC")
-        result2 = _today_data_signature(health, [], date(2024, 1, 16), "UTC")
+        result1 = _today_data_signature(health, [], [], date(2024, 1, 15), "UTC")
+        result2 = _today_data_signature(health, [], [], date(2024, 1, 16), "UTC")
         assert result1 != result2
 
     def test_different_timezone_produces_different_hash(self):
         health = _make_health_row()
-        result1 = _today_data_signature(health, [], date(2024, 1, 15), "UTC")
-        result2 = _today_data_signature(health, [], date(2024, 1, 15), "America/New_York")
+        result1 = _today_data_signature(health, [], [], date(2024, 1, 15), "UTC")
+        result2 = _today_data_signature(health, [], [], date(2024, 1, 15), "America/New_York")
         assert result1 != result2
 
     def test_different_health_data_produces_different_hash(self):
         health1 = _make_health_row(sleep_score=80)
         health2 = _make_health_row(sleep_score=90)
-        result1 = _today_data_signature(health1, [], date(2024, 1, 15), "UTC")
-        result2 = _today_data_signature(health2, [], date(2024, 1, 15), "UTC")
+        result1 = _today_data_signature(health1, [], [], date(2024, 1, 15), "UTC")
+        result2 = _today_data_signature(health2, [], [], date(2024, 1, 15), "UTC")
         assert result1 != result2
 
     def test_different_activities_produce_different_hash(self):
         health = _make_health_row()
         activity1 = _make_activity_row(duration_seconds=3600)
         activity2 = _make_activity_row(duration_seconds=7200)
-        result1 = _today_data_signature(health, [activity1], date(2024, 1, 15), "UTC")
-        result2 = _today_data_signature(health, [activity2], date(2024, 1, 15), "UTC")
+        result1 = _today_data_signature(health, [activity1], [], date(2024, 1, 15), "UTC")
+        result2 = _today_data_signature(health, [activity2], [], date(2024, 1, 15), "UTC")
         assert result1 != result2
 
     def test_activity_order_does_not_affect_hash(self):
@@ -254,9 +269,76 @@ class TestTodayDataSignature:
         health = _make_health_row()
         activity1 = _make_activity_row(start_time="2024-01-15T08:00:00Z", garmin_activity_id=1)
         activity2 = _make_activity_row(start_time="2024-01-15T10:00:00Z", garmin_activity_id=2)
-        result1 = _today_data_signature(health, [activity1, activity2], date(2024, 1, 15), "UTC")
-        result2 = _today_data_signature(health, [activity2, activity1], date(2024, 1, 15), "UTC")
+        result1 = _today_data_signature(health, [activity1, activity2], [], date(2024, 1, 15), "UTC")
+        result2 = _today_data_signature(health, [activity2, activity1], [], date(2024, 1, 15), "UTC")
         assert result1 == result2
+
+    def test_planned_workouts_change_signature(self):
+        health = _make_health_row()
+        planned1 = [{
+            "id": "w1",
+            "discipline": "RUN",
+            "scheduled_date": "2024-01-15",
+            "estimated_duration_seconds": 3600,
+            "estimated_tss": 50,
+        }]
+        planned2 = [{
+            "id": "w1",
+            "discipline": "RUN",
+            "scheduled_date": "2024-01-15",
+            "estimated_duration_seconds": 5400,
+            "estimated_tss": 80,
+        }]
+        result1 = _today_data_signature(health, [], planned1, date(2024, 1, 15), "UTC")
+        result2 = _today_data_signature(health, [], planned2, date(2024, 1, 15), "UTC")
+        assert result1 != result2
+
+
+class TestPlannedWorkoutsForBriefingDate:
+    def test_filters_to_exact_local_date(self):
+        workouts = [
+            _make_workout_row(id="w1", discipline="RUN", scheduled_date="2024-01-15"),
+            _make_workout_row(id="w2", discipline="SWIM", scheduled_date="2024-01-14"),
+            _make_workout_row(id="w3", discipline="RIDE_ROAD", scheduled_date="2024-01-16"),
+        ]
+
+        result = _planned_workouts_for_briefing_date(workouts, date(2024, 1, 15))
+
+        assert result == [{
+            "id": "w1",
+            "discipline": "RUN",
+            "scheduled_date": "2024-01-15",
+            "estimated_duration_seconds": 3600,
+            "estimated_tss": 50,
+        }]
+
+
+class TestBuildAiPrompt:
+    def test_sanitizes_planned_workouts_today_payload(self):
+        prompt_json = _build_ai_prompt(
+            timezone_name="UTC",
+            local_date=date(2024, 1, 15),
+            health_rows_7d=[],
+            activities_7d=[],
+            goals=[],
+            fitness={},
+            planned_workouts=[{
+                "id": "w1",
+                "name": "Technique Intervals",
+                "discipline": "RUN",
+                "scheduled_date": "2024-01-15",
+                "estimated_duration_seconds": 3600,
+                "estimated_tss": 60,
+                "description": "Track work",
+            }],
+        )
+
+        parsed = json.loads(prompt_json)
+        assert parsed["planned_workouts_today"] == [{
+            "discipline": "RUN",
+            "estimated_duration_seconds": 3600,
+            "estimated_tss": 60,
+        }]
 
 
 # ---------------------------------------------------------------------------
@@ -296,12 +378,13 @@ class TestBriefingSystemPrompt:
         assert "sleep architecture" in prompt_lower
         assert "periodisation" in prompt_lower or "periodization" in prompt_lower
 
-    def test_four_recommendations(self):
-        """Prompt requires exactly 4 recommendations."""
+    def test_two_workout_suggestions(self):
+        """Prompt requires exactly 2 workout-focused suggestions."""
         prompt_lower = BRIEFING_SYSTEM_PROMPT.lower()
-        assert "exactly 4" in prompt_lower
-        assert "recovery" in prompt_lower
-        assert "training" in prompt_lower
+        assert "exactly 2" in prompt_lower
+        assert "workout-focused" in prompt_lower
+        assert "rest-day structure" in prompt_lower
+        assert "do not restate the same fatigue warning" in prompt_lower
 
     def test_mandatory_caution(self):
         """Prompt requires a mandatory non-null caution field."""
@@ -330,6 +413,7 @@ class TestBriefingSystemPrompt:
         assert "planned_workouts_today" in prompt_lower
         assert "planned" in prompt_lower
         assert "scheduled" in prompt_lower
+        assert "do not invent workout names" in prompt_lower
 
     def test_interpretive_analysis_style(self):
         """Prompt requires interpretive analysis, not just number listing."""

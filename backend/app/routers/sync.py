@@ -10,6 +10,7 @@ from app.database import get_supabase
 from app.models import UserRow
 from app.services.auth import get_current_user
 from app.services.dashboard import build_dashboard_overview
+from app.services.garmin import is_garmin_auth_error
 from app.services.garmin_sync import sync_activities, sync_daily_health
 from app.tasks import analyze_activity, trigger_full_sync
 
@@ -44,24 +45,6 @@ class SyncStatus(BaseModel):
     connected: bool
     last_sync_at: str | None
     garmin_email: str | None
-
-
-def _is_garmin_session_expired(exc: Exception) -> bool:
-    """Check if the exception indicates an expired Garmin session."""
-    err_str = str(exc).lower()
-    return any(
-        phrase in err_str
-        for phrase in [
-            "invalid username-password",
-            "invalid user",
-            "unauthorized",
-            "401",
-            "session expired",
-            "not authenticated",
-            "authentication failed",
-        ]
-    )
-
 
 async def _run_sync(
     current_user: UserRow,
@@ -109,7 +92,7 @@ async def _run_sync(
         ) from exc
     except Exception as exc:
         logger.exception("Garmin sync failed for user %s", current_user.id)
-        if _is_garmin_session_expired(exc):
+        if is_garmin_auth_error(exc):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Garmin session expired — please reconnect your Garmin account in Settings.",

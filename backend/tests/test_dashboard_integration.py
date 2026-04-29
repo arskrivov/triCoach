@@ -40,6 +40,7 @@ def _make_supabase_client(
     workouts: list | None = None,
     goals: list | None = None,
     briefings: list | None = None,
+    training_plans: list | None = None,
 ) -> MagicMock:
     """Create a mock Supabase async client that returns the given data."""
     sb = MagicMock()
@@ -69,6 +70,8 @@ def _make_supabase_client(
             return make_query_chain(goals)
         if table_name == "daily_briefings":
             return make_query_chain(briefings)
+        if table_name == "training_plans":
+            return make_query_chain(training_plans)
         return make_query_chain([])
 
     sb.table = MagicMock(side_effect=table_side_effect)
@@ -126,6 +129,41 @@ def _make_health_dict(
         "daily_calories": 2200,
         "created_at": "2024-01-15T10:00:00Z",
         "updated_at": "2024-01-15T10:00:00Z",
+    }
+
+
+def _make_workout_dict(
+    user_id: str = "user-123",
+    workout_id: str = "workout-1",
+    discipline: str = "RUN",
+    scheduled_date: str = "2024-01-15",
+    plan_id: str | None = "active-plan",
+) -> dict:
+    return {
+        "id": workout_id,
+        "user_id": user_id,
+        "name": "Workout",
+        "discipline": discipline,
+        "builder_type": "endurance",
+        "description": "Planned session",
+        "content": {},
+        "estimated_duration_seconds": 3600,
+        "estimated_tss": 50,
+        "scheduled_date": scheduled_date,
+        "plan_id": plan_id,
+        "plan_week": 1,
+        "plan_day": 1,
+        "is_template": False,
+        "created_at": "2024-01-15T08:00:00Z",
+        "updated_at": "2024-01-15T08:00:00Z",
+    }
+
+
+def _make_plan_dict(plan_id: str = "active-plan", status: str = "active") -> dict:
+    return {
+        "id": plan_id,
+        "status": status,
+        "created_at": "2024-01-15T08:00:00Z",
     }
 
 
@@ -307,3 +345,77 @@ async def test_dashboard_sparkline_always_30_days():
         result = await build_dashboard_overview(user, sb, timezone_name="UTC")
 
     assert len(result["recovery"]["sparkline"]) == 30
+
+
+@pytest.mark.asyncio
+async def test_dashboard_briefing_receives_only_same_day_planned_workouts():
+    """Verify briefing generation receives only workouts scheduled for the local date."""
+    user = _make_user()
+    today = date.today().isoformat()
+    workouts = [
+        _make_workout_dict(workout_id="w-today", discipline="RUN", scheduled_date=today),
+        _make_workout_dict(workout_id="w-future", discipline="SWIM", scheduled_date="2099-01-01"),
+    ]
+    sb = _make_supabase_client(
+        activities=[],
+        health=[],
+        workouts=workouts,
+        goals=[],
+        briefings=[],
+        training_plans=[_make_plan_dict(plan_id="active-plan")],
+    )
+
+    with (
+        patch("app.services.dashboard.get_fitness_timeline", new_callable=AsyncMock) as mock_fitness,
+        patch("app.services.dashboard._resolve_briefing", new_callable=AsyncMock) as mock_briefing,
+    ):
+        mock_fitness.return_value = []
+        mock_briefing.return_value = None
+        await build_dashboard_overview(user, sb, timezone_name="UTC")
+
+    planned_workouts = mock_briefing.await_args.kwargs["planned_workouts"]
+    assert planned_workouts == [{
+        "id": "w-today",
+        "discipline": "RUN",
+        "scheduled_date": today,
+        "estimated_duration_seconds": 3600,
+        "estimated_tss": 50,
+    }]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_uses_active_plan_workouts_only_for_upcoming_and_briefing():
+    """Archived-plan and orphan workouts should not leak into the dashboard briefing."""
+    user = _make_user()
+    today = date.today().isoformat()
+    workouts = [
+        _make_workout_dict(workout_id="w-active", discipline="MOBILITY", scheduled_date=today, plan_id="active-plan"),
+        _make_workout_dict(workout_id="w-archived", discipline="RUN", scheduled_date=today, plan_id="archived-plan"),
+        _make_workout_dict(workout_id="w-orphan", discipline="RUN", scheduled_date=today, plan_id=None),
+    ]
+    sb = _make_supabase_client(
+        activities=[],
+        health=[],
+        workouts=workouts,
+        goals=[],
+        briefings=[],
+        training_plans=[_make_plan_dict(plan_id="active-plan")],
+    )
+
+    with (
+        patch("app.services.dashboard.get_fitness_timeline", new_callable=AsyncMock) as mock_fitness,
+        patch("app.services.dashboard._resolve_briefing", new_callable=AsyncMock) as mock_briefing,
+    ):
+        mock_fitness.return_value = []
+        mock_briefing.return_value = None
+        result = await build_dashboard_overview(user, sb, timezone_name="UTC")
+
+    assert [workout["id"] for workout in result["upcoming_workouts"]] == ["w-active"]
+    planned_workouts = mock_briefing.await_args.kwargs["planned_workouts"]
+    assert planned_workouts == [{
+        "id": "w-active",
+        "discipline": "MOBILITY",
+        "scheduled_date": today,
+        "estimated_duration_seconds": 3600,
+        "estimated_tss": 50,
+    }]

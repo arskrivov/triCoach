@@ -14,7 +14,13 @@ from app.schemas.garmin import (
 )
 from app.services.auth import get_current_user
 from app.services.dashboard import build_dashboard_overview
-from app.services.garmin import connect_garmin, decrypt_session, encrypt_session, import_garmin_token_store
+from app.services.garmin import (
+    connect_garmin,
+    decrypt_session,
+    encrypt_session,
+    import_garmin_token_store,
+    is_garmin_auth_error,
+)
 from app.services.garmin_sync import sync_activities, sync_daily_health
 
 from garminconnect import Garmin
@@ -34,7 +40,7 @@ def _map_garmin_error(exc: Exception) -> HTTPException:
                 "Wait 5–10 minutes and try again, or import a token store instead."
             ),
         )
-    if "401" in err_str or "invalid" in err_lower or "credentials" in err_lower or "unauthorized" in err_lower:
+    if is_garmin_auth_error(exc) or "invalid" in err_lower or "credentials" in err_lower:
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Garmin email or password.")
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Garmin login failed: {exc}")
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { useGarminSyncReload, useGarminSyncState } from "@/lib/garmin-sync";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -157,6 +158,18 @@ function getWorkoutStatus(workout: PlanWorkoutResponse): WorkoutStatus {
   return "upcoming";
 }
 
+function resolveFocusedWeek(plan: PlanWithWorkouts): number | null {
+  const today = new Date().toISOString().slice(0, 10);
+  const todayWorkout = plan.workouts.find((workout) => workout.scheduled_date?.slice(0, 10) === today);
+
+  if (todayWorkout?.plan_week) {
+    return todayWorkout.plan_week;
+  }
+
+  const futureWorkout = plan.workouts.find((workout) => workout.scheduled_date && workout.scheduled_date >= today);
+  return futureWorkout?.plan_week ?? null;
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function WorkoutsPage() {
@@ -165,6 +178,7 @@ export default function WorkoutsPage() {
   const [allPlans, setAllPlans] = useState<TrainingPlan[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [selectedWorkout, setSelectedWorkout] = useState<PlanWorkoutResponse | null>(null);
   const [generatingGoalId, setGeneratingGoalId] = useState<string | null>(null);
@@ -178,6 +192,7 @@ export default function WorkoutsPage() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const { isSyncing } = useGarminSyncState();
 
   const loadActivePlan = useCallback(async (planId: string) => {
     const planRes = await api.get<PlanWithWorkouts>(`/plans/${planId}`);
@@ -185,39 +200,48 @@ export default function WorkoutsPage() {
     return planRes.data;
   }, []);
 
+  const loadPageData = useCallback(async (options?: { preserveCurrentWeek?: boolean }) => {
+    // Fetch all plans
+    const plansRes = await api.get<TrainingPlan[]>("/plans");
+    setAllPlans(plansRes.data);
+
+    // Find the active plan and load it with workouts
+    const active = plansRes.data.find((plan) => plan.status === "active");
+    if (active) {
+      const planData = await loadActivePlan(active.id);
+
+      if (options?.preserveCurrentWeek) {
+        const planWeeks = new Set(
+          planData.workouts
+            .map((workout) => workout.plan_week)
+            .filter((week): week is number => typeof week === "number" && week > 0),
+        );
+        if (!planWeeks.has(currentWeek)) {
+          const focusedWeek = resolveFocusedWeek(planData);
+          if (focusedWeek) {
+            setCurrentWeek(focusedWeek);
+          }
+        }
+      } else {
+        const focusedWeek = resolveFocusedWeek(planData);
+        if (focusedWeek) {
+          setCurrentWeek(focusedWeek);
+        }
+      }
+    } else {
+      setActivePlan(null);
+    }
+
+    // Fetch goals for plan generation
+    const goalsRes = await api.get<Goal[]>("/coach/goals");
+    setGoals(goalsRes.data.filter((goal) => goal.is_active));
+  }, [currentWeek, loadActivePlan]);
+
   // Load data
   useEffect(() => {
     async function load() {
       try {
-        // Fetch all plans
-        const plansRes = await api.get<TrainingPlan[]>("/plans");
-        setAllPlans(plansRes.data);
-
-        // Find the active plan and load it with workouts
-        const active = plansRes.data.find((p) => p.status === "active");
-        if (active) {
-          const planData = await loadActivePlan(active.id);
-
-          // Jump to current week
-          const today = new Date().toISOString().slice(0, 10);
-          const todayWorkout = planData.workouts.find(
-            (w) => w.scheduled_date?.slice(0, 10) === today
-          );
-          if (todayWorkout?.plan_week) {
-            setCurrentWeek(todayWorkout.plan_week);
-          } else {
-            const futureWorkout = planData.workouts.find(
-              (w) => w.scheduled_date && w.scheduled_date >= today
-            );
-            if (futureWorkout?.plan_week) {
-              setCurrentWeek(futureWorkout.plan_week);
-            }
-          }
-        }
-
-        // Fetch goals for plan generation
-        const goalsRes = await api.get<Goal[]>("/coach/goals");
-        setGoals(goalsRes.data.filter((g) => g.is_active));
+        await loadPageData();
       } catch {
         // partial load is fine
       } finally {
@@ -225,7 +249,18 @@ export default function WorkoutsPage() {
       }
     }
     void load();
-  }, [loadActivePlan]);
+  }, [loadPageData]);
+
+  useGarminSyncReload(useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadPageData({ preserveCurrentWeek: true });
+    } catch {
+      // partial reload is fine
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadPageData]));
 
   // Derived data for active plan
   const totalWeeks = activePlan?.plan_structure?.total_weeks ?? 1;
@@ -250,36 +285,39 @@ export default function WorkoutsPage() {
     }
     return map;
   }, [weekWorkouts]);
+  const activePlanId = activePlan?.id ?? null;
 
   // Fetch weekly coach briefing when week changes
   useEffect(() => {
-    if (!activePlan) return;
+    if (!activePlanId) return;
     let cancelled = false;
-    setBriefingLoading(true);
-    setWeekBriefing(null);
-    api
-      .get<{ briefing: string }>(`/plans/${activePlan.id}/week-briefing/${currentWeek}`)
-      .then((res) => {
-        if (!cancelled) setWeekBriefing(res.data.briefing);
-      })
-      .catch(() => {
-        // briefing is non-critical — just skip it
-      })
-      .finally(() => {
-        if (!cancelled) setBriefingLoading(false);
-      });
+    queueMicrotask(() => {
+      if (cancelled) {
+        return;
+      }
+
+      setBriefingLoading(true);
+      setWeekBriefing(null);
+      api
+        .get<{ briefing: string }>(`/plans/${activePlanId}/week-briefing/${currentWeek}`)
+        .then((res) => {
+          if (!cancelled) setWeekBriefing(res.data.briefing);
+        })
+        .catch(() => {
+          // briefing is non-critical — just skip it
+        })
+        .finally(() => {
+          if (!cancelled) setBriefingLoading(false);
+        });
+    });
     return () => { cancelled = true; };
-  }, [activePlan?.id, currentWeek]);
+  }, [activePlanId, currentWeek]);
 
   const jumpToToday = useCallback(() => {
     if (!activePlan) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const todayW = activePlan.workouts.find((w) => w.scheduled_date?.slice(0, 10) === today);
-    if (todayW?.plan_week) {
-      setCurrentWeek(todayW.plan_week);
-    } else {
-      const futureW = activePlan.workouts.find((w) => w.scheduled_date && w.scheduled_date >= today);
-      if (futureW?.plan_week) setCurrentWeek(futureW.plan_week);
+    const focusedWeek = resolveFocusedWeek(activePlan);
+    if (focusedWeek) {
+      setCurrentWeek(focusedWeek);
     }
   }, [activePlan]);
 
@@ -353,7 +391,7 @@ export default function WorkoutsPage() {
 
   // ── Loading state ──────────────────────────────────────────────────────────
 
-  if (loading) {
+  if (loading || isSyncing || refreshing) {
     return (
       <div className="max-w-5xl mx-auto space-y-4">
         <div className="h-10 w-48 rounded-lg bg-muted/50 animate-pulse" />
@@ -521,7 +559,7 @@ export default function WorkoutsPage() {
             <div className="flex items-start gap-3">
               <span className="text-lg leading-none mt-0.5">🤖</span>
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-muted-foreground mb-1">Coach's Week Preview</p>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Coach&apos;s Week Preview</p>
                 {briefingLoading ? (
                   <div className="space-y-1.5">
                     <div className="h-3 w-full rounded bg-muted/50 animate-pulse" />

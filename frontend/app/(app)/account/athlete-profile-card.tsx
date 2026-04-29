@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useGarminSyncReload, useGarminSyncState } from "@/lib/garmin-sync";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
   CardContent,
@@ -169,22 +171,66 @@ const EMPTY: AthleteProfile = {
 
 export function AthleteProfileCard() {
   const [profile, setProfile] = useState<AthleteProfile>(EMPTY);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isSyncing } = useGarminSyncState();
 
-  useEffect(() => {
-    api
-      .get<AthleteProfile>("/activities/profile/athlete")
-      .then((r) => setProfile(r.data))
-      .catch(() => {});
+  const loadProfile = useCallback(async () => {
+    const response = await api.get<AthleteProfile>("/activities/profile/athlete");
+    setProfile(response.data);
+    setDirty(false);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .get<AthleteProfile>("/activities/profile/athlete")
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        setProfile(response.data);
+        setDirty(false);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useGarminSyncReload(useCallback(async () => {
+    if (dirty) {
+      return;
+    }
+
+    setRefreshing(true);
+    try {
+      await loadProfile();
+    } catch {
+      // Silent reload failure; the existing values remain visible.
+    } finally {
+      setRefreshing(false);
+    }
+  }, [dirty, loadProfile]));
+
   function set(key: NumericProfileKey, val: string) {
+    setDirty(true);
     setProfile((p) => ({ ...p, [key]: val === "" ? null : Number(val) }));
   }
 
   function setNotes(val: string) {
+    setDirty(true);
     setProfile((p) => ({ ...p, notes: val === "" ? null : val }));
   }
 
@@ -198,6 +244,7 @@ export function AthleteProfileCard() {
         profile
       );
       setProfile(response.data);
+      setDirty(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err: unknown) {
@@ -208,6 +255,8 @@ export function AthleteProfileCard() {
       setSaving(false);
     }
   }
+
+  const showLoadingState = loading || refreshing || (isSyncing && !dirty);
 
   return (
     <Card>
@@ -220,83 +269,121 @@ export function AthleteProfileCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col gap-6">
-          {SECTIONS.map((section) => (
-            <fieldset key={section.label}>
-              <legend className="text-sm font-semibold text-foreground mb-3">
-                {section.label}
-              </legend>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {section.fields.map(({ key, label, unit, hint }) => {
-                  const source: "manual" | "garmin" | "default" =
-                    profile.field_sources?.[key] ?? "default";
-                  const garminValue: number | null =
-                    profile.garmin_values?.[key] ?? null;
-                  const effectiveValue = profile[key];
-
-                  return (
-                    <div key={key} className="flex flex-col gap-1">
+        {showLoadingState ? (
+          <div className="flex flex-col gap-6">
+            {SECTIONS.map((section) => (
+              <fieldset key={section.label}>
+                <legend className="text-sm font-semibold text-foreground mb-3">
+                  {section.label}
+                </legend>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {section.fields.map(({ key }) => (
+                    <div key={key} className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
-                        <Label htmlFor={key} className="text-sm">
-                          {label} ({unit})
-                        </Label>
-                        <SourceBadge source={source} />
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-5 w-16 rounded-full" />
                       </div>
-                      {hint && (
-                        <p className="text-xs text-muted-foreground">{hint}</p>
-                      )}
-                      <Input
-                        id={key}
-                        type="number"
-                        value={effectiveValue ?? ""}
-                        onChange={(e) => set(key, e.target.value)}
-                        placeholder="—"
-                        className="min-h-[44px]"
-                      />
-                      {source === "manual" && garminValue != null && (
-                        <p className="text-xs text-muted-foreground">
-                          Garmin: {garminValue}
-                          {unit}
-                        </p>
-                      )}
+                      <Skeleton className="h-3 w-48" />
+                      <Skeleton className="h-11 w-full" />
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+              </fieldset>
+            ))}
+
+            <fieldset>
+              <legend className="text-sm font-semibold text-foreground mb-3">
+                Athlete Notes
+              </legend>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                </div>
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-32 w-full" />
               </div>
             </fieldset>
-          ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-6">
+            {SECTIONS.map((section) => (
+              <fieldset key={section.label}>
+                <legend className="text-sm font-semibold text-foreground mb-3">
+                  {section.label}
+                </legend>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {section.fields.map(({ key, label, unit, hint }) => {
+                    const source: "manual" | "garmin" | "default" =
+                      profile.field_sources?.[key] ?? "default";
+                    const garminValue: number | null =
+                      profile.garmin_values?.[key] ?? null;
+                    const effectiveValue = profile[key];
 
-          <fieldset>
-            <legend className="text-sm font-semibold text-foreground mb-3">
-              Athlete Notes
-            </legend>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="athlete-notes" className="text-sm">
-                  Health and coaching notes
-                </Label>
-                <SourceBadge source="manual" />
+                    return (
+                      <div key={key} className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor={key} className="text-sm">
+                            {label} ({unit})
+                          </Label>
+                          <SourceBadge source={source} />
+                        </div>
+                        {hint && (
+                          <p className="text-xs text-muted-foreground">{hint}</p>
+                        )}
+                        <Input
+                          id={key}
+                          type="number"
+                          value={effectiveValue ?? ""}
+                          onChange={(e) => set(key, e.target.value)}
+                          placeholder="—"
+                          className="min-h-[44px]"
+                        />
+                        {source === "manual" && garminValue != null && (
+                          <p className="text-xs text-muted-foreground">
+                            Garmin: {garminValue}
+                            {unit}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            ))}
+
+            <fieldset>
+              <legend className="text-sm font-semibold text-foreground mb-3">
+                Athlete Notes
+              </legend>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="athlete-notes" className="text-sm">
+                    Health and coaching notes
+                  </Label>
+                  <SourceBadge source="manual" />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Injuries, pain, contraindications, equipment limits, or coaching
+                  preferences. Example: knee pain, avoid deep squats and downhill
+                  running.
+                </p>
+                <textarea
+                  id="athlete-notes"
+                  value={profile.notes ?? ""}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add constraints the AI coach should respect when building workouts."
+                  className="min-h-32 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs"
+                />
               </div>
-              <p className="text-xs text-muted-foreground">
-                Injuries, pain, contraindications, equipment limits, or coaching
-                preferences. Example: knee pain, avoid deep squats and downhill
-                running.
-              </p>
-              <textarea
-                id="athlete-notes"
-                value={profile.notes ?? ""}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add constraints the AI coach should respect when building workouts."
-                className="min-h-32 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs"
-              />
-            </div>
-          </fieldset>
-        </div>
+            </fieldset>
+          </div>
+        )}
 
         <div className="flex items-center gap-3 mt-6">
           <Button
             onClick={save}
-            disabled={saving}
+            disabled={saving || showLoadingState}
             className="min-h-[44px] min-w-[44px]"
           >
             {saving ? "Saving…" : "Save profile"}

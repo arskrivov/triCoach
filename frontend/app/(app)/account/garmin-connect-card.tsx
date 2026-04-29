@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type ApiRequestConfig } from "@/lib/api";
 import { postGarminSync, type GarminSyncResponse } from "@/lib/garmin-sync-api";
 import {
-  dispatchGarminSyncCompleted,
-  dispatchGarminSyncFailed,
-  dispatchGarminSyncStarted,
+  runGarminSyncOperation,
   type GarminSyncSource,
+  useGarminSyncReload,
+  useGarminSyncState,
 } from "@/lib/garmin-sync";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type GarminStatus = {
   connected: boolean;
@@ -31,9 +32,12 @@ export function GarminConnectCard() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [tokenStore, setTokenStore] = useState("");
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const { isSyncing } = useGarminSyncState();
 
   function getTimezone() {
     if (typeof window === "undefined") {
@@ -46,7 +50,11 @@ export function GarminConnectCard() {
     return (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? fallback;
   }
 
-  async function loadStatus() {
+  const loadStatus = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setStatusLoading(true);
+    }
+
     try {
       const response = await api.get<GarminStatus>("/garmin/status", GARMIN_REQUEST_CONFIG);
       setStatus(response.data);
@@ -59,29 +67,19 @@ export function GarminConnectCard() {
       );
       setError(message);
       throw error;
+    } finally {
+      if (!options?.silent) {
+        setStatusLoading(false);
+      }
     }
-  }
+  }, []);
 
   async function syncHistory(source: GarminSyncSource) {
-    dispatchGarminSyncStarted(source);
-    try {
-      const response = await postGarminSync("/sync/now?days_back=90", { timezone: getTimezone() });
-      try {
-        await loadStatus();
-      } catch (statusError: unknown) {
-        setError(getErrorMessage(statusError, "Could not refresh Garmin status after sync."));
-      }
-      dispatchGarminSyncCompleted({
-        activitiesSynced: response.activities_synced,
-        healthDaysSynced: response.health_days_synced,
-        source,
-      });
-      return response;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : getErrorMessage(error, "Sync failed.");
-      dispatchGarminSyncFailed({ message, source });
-      throw error;
-    }
+    return runGarminSyncOperation(
+      source,
+      () => postGarminSync("/sync/now?days_back=90", { timezone: getTimezone() }),
+      (error) => getErrorMessage(error, "Sync failed."),
+    );
   }
 
   useEffect(() => {
@@ -89,19 +87,18 @@ export function GarminConnectCard() {
 
     async function initializeStatus() {
       try {
-        const response = await api.get<GarminStatus>("/garmin/status", GARMIN_REQUEST_CONFIG);
+        const response = await loadStatus({ silent: true });
         if (!cancelled) {
-          setStatus(response.data);
+          setStatus(response);
         }
-      } catch (error: unknown) {
+      } catch {
         if (cancelled) {
           return;
         }
-        setStatus({ connected: false, garmin_email: null, last_sync_at: null });
-        setError(getErrorMessage(
-          error,
-          "Could not load Garmin status right now. You can keep using the dashboard.",
-        ));
+      } finally {
+        if (!cancelled) {
+          setStatusLoading(false);
+        }
       }
     }
 
@@ -110,7 +107,18 @@ export function GarminConnectCard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadStatus]);
+
+  useGarminSyncReload(useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadStatus();
+    } catch {
+      // Keep the last known status visible if the refresh fails.
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadStatus]));
 
   async function handleConnect(e: React.FormEvent) {
     e.preventDefault();
@@ -119,37 +127,40 @@ export function GarminConnectCard() {
     setLoading(true);
 
     try {
-      const response = await api.post<{
-        connected: boolean;
-        garmin_email: string;
-        activities_synced: number;
-        activity_files_synced: number;
-        health_days_synced: number;
-        missing_health_metrics: string[];
-      }>(
-        "/garmin/connect-and-sync",
-        {
-          garmin_email: email,
-          garmin_password: password,
+      const data = await runGarminSyncOperation(
+        "settings",
+        async () => {
+          const response = await api.post<{
+            connected: boolean;
+            garmin_email: string;
+            activities_synced: number;
+            activity_files_synced: number;
+            health_days_synced: number;
+            missing_health_metrics: string[];
+          }>(
+            "/garmin/connect-and-sync",
+            {
+              garmin_email: email,
+              garmin_password: password,
+            },
+            {
+              ...GARMIN_REQUEST_CONFIG,
+              headers: { "X-User-Timezone": getTimezone() },
+            },
+          );
+          return response.data;
         },
-        {
-          ...GARMIN_REQUEST_CONFIG,
-          headers: { "X-User-Timezone": getTimezone() },
-        },
+        (error) => getErrorMessage(error, "Failed to connect. Check your credentials."),
       );
-
-      const data = response.data;
-      setStatus({ connected: true, garmin_email: data.garmin_email, last_sync_at: null });
+      setStatus({
+        connected: true,
+        garmin_email: data.garmin_email,
+        last_sync_at: null,
+        session_status: "valid",
+      });
       setSuccess(
         `Garmin connected. Imported ${data.activities_synced} activities and ${data.health_days_synced} health days.`,
       );
-
-      dispatchGarminSyncCompleted({
-        activitiesSynced: data.activities_synced,
-        healthDaysSynced: data.health_days_synced,
-        source: "settings",
-      });
-
       setEmail("");
       setPassword("");
     } catch (error: unknown) {
@@ -200,7 +211,7 @@ export function GarminConnectCard() {
     setSuccess("");
     try {
       await api.delete("/garmin/disconnect", GARMIN_REQUEST_CONFIG);
-      setStatus({ connected: false, garmin_email: null, last_sync_at: null });
+      setStatus({ connected: false, garmin_email: null, last_sync_at: null, session_status: "not_connected" });
       setSuccess("Garmin account disconnected.");
     } catch {
       setError("Failed to disconnect.");
@@ -223,6 +234,8 @@ export function GarminConnectCard() {
     }
   }
 
+  const showLoadingState = statusLoading || refreshing || (isSyncing && status?.connected);
+
   return (
     <Card>
       <CardHeader>
@@ -233,7 +246,9 @@ export function GarminConnectCard() {
               Connect your Garmin account to sync activities and health data
             </CardDescription>
           </div>
-          {status && (
+          {showLoadingState ? (
+            <Skeleton className="h-6 w-28 rounded-full" />
+          ) : status && (
             <Badge variant={
               status.session_status === "expired"
                 ? "destructive"
@@ -262,7 +277,20 @@ export function GarminConnectCard() {
           </Alert>
         )}
 
-        {status?.connected ? (
+        {showLoadingState ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-md border p-3">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-52" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-9 w-24" />
+                <Skeleton className="h-9 w-24" />
+              </div>
+            </div>
+          </div>
+        ) : status?.connected ? (
           <div className="flex flex-col gap-3">
             {status.session_status === "expired" && (
               <Alert variant="destructive">
@@ -289,15 +317,15 @@ export function GarminConnectCard() {
                 variant="outline"
                 size="sm"
                 onClick={handleManualSync}
-                disabled={loading}
+                disabled={loading || isSyncing}
               >
-                {loading ? "Syncing..." : "Sync Now"}
+                {loading || isSyncing ? "Syncing..." : "Sync Now"}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleDisconnect}
-                disabled={loading}
+                disabled={loading || isSyncing}
               >
                 Disconnect
               </Button>
@@ -355,8 +383,8 @@ export function GarminConnectCard() {
                     className="min-h-[44px]"
                   />
                 </div>
-                <Button type="submit" disabled={loading} className="w-fit">
-                  {loading ? "Connecting..." : "Connect Garmin"}
+                <Button type="submit" disabled={loading || isSyncing} className="w-fit">
+                  {loading || isSyncing ? "Connecting..." : "Connect Garmin"}
                 </Button>
               </form>
             ) : (
@@ -390,7 +418,7 @@ export function GarminConnectCard() {
                     required
                   />
                 </div>
-                <Button type="submit" disabled={loading || !tokenStore.trim()} className="w-fit">
+                <Button type="submit" disabled={loading || isSyncing || !tokenStore.trim()} className="w-fit">
                   {loading ? "Importing..." : "Import Garmin Tokens"}
                 </Button>
               </form>

@@ -278,12 +278,13 @@ from app.services.dashboard import _build_ai_prompt
 class TestProperty3PlannedWorkoutsRoundTrip:
     """For any list of planned workout dicts (including the empty list),
     calling _build_ai_prompt with that list and then parsing the resulting
-    JSON produces a planned_workouts_today array that equals the input list."""
+    JSON produces a planned_workouts_today array with only the fields the
+    model actually needs."""
 
     @given(planned=st.lists(_planned_workout_strategy, min_size=0, max_size=5))
     @settings(max_examples=100)
     def test_planned_workouts_present_in_prompt(self, planned: list[dict[str, Any]]):
-        """planned_workouts_today in the prompt JSON matches the input list."""
+        """planned_workouts_today in the prompt JSON is sanitized."""
         prompt_json = _build_ai_prompt(
             timezone_name="UTC",
             local_date=date(2024, 6, 15),
@@ -295,8 +296,16 @@ class TestProperty3PlannedWorkoutsRoundTrip:
         )
         parsed = _json.loads(prompt_json)
         assert "planned_workouts_today" in parsed, "planned_workouts_today key missing from prompt"
-        assert parsed["planned_workouts_today"] == planned, (
-            f"Expected {planned}, got {parsed['planned_workouts_today']}"
+        expected = [
+            {
+                "discipline": item["discipline"],
+                "estimated_duration_seconds": item["estimated_duration_seconds"],
+                "estimated_tss": item["estimated_tss"],
+            }
+            for item in planned
+        ]
+        assert parsed["planned_workouts_today"] == expected, (
+            f"Expected {expected}, got {parsed['planned_workouts_today']}"
         )
 
     @given(data=st.data())
@@ -320,10 +329,10 @@ class TestProperty3PlannedWorkoutsRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# Property 8: Heuristic briefing always produces exactly 4 recommendations
+# Property 8: Heuristic briefing always produces exactly 2 recommendations
 #              and a non-null caution
 # Feature: ai-coach-insights, Property 8: Heuristic briefing always produces
-#          exactly 4 recommendations and a non-null caution
+#          exactly 2 recommendations and a non-null caution
 # **Validates: Requirements 4.7, 7.1, 7.4**
 # ---------------------------------------------------------------------------
 
@@ -394,13 +403,13 @@ def _build_overview(draw) -> dict[str, Any]:
 
 class TestProperty8HeuristicBriefingStructure:
     """For any overview dict with valid recovery and activity sections,
-    _heuristic_briefing returns exactly 4 recommendations and a non-null,
+    _heuristic_briefing returns exactly 2 recommendations and a non-null,
     non-empty caution string."""
 
     @given(data=st.data())
     @settings(max_examples=100)
-    def test_exactly_4_recommendations(self, data):
-        """_heuristic_briefing always returns exactly 4 recommendations."""
+    def test_exactly_2_recommendations(self, data):
+        """_heuristic_briefing always returns exactly 2 recommendations."""
         overview = _build_overview(data.draw)
         local_date = data.draw(_date_strategy)
         local_time = datetime.now(_tz.utc)
@@ -410,8 +419,8 @@ class TestProperty8HeuristicBriefingStructure:
         assert isinstance(result["recommendations"], list), (
             f"recommendations should be a list, got {type(result['recommendations'])}"
         )
-        assert len(result["recommendations"]) == 4, (
-            f"Expected exactly 4 recommendations, got {len(result['recommendations'])}: {result['recommendations']}"
+        assert len(result["recommendations"]) == 2, (
+            f"Expected exactly 2 recommendations, got {len(result['recommendations'])}: {result['recommendations']}"
         )
 
     @given(data=st.data())
@@ -437,7 +446,7 @@ class TestProperty8HeuristicBriefingStructure:
 
 from app.services.dashboard import _parse_ai_briefing
 
-# Strategy for generating a fallback dict with exactly 4 recommendations
+# Strategy for generating a fallback dict with exactly 2 recommendations
 # and a non-null caution, matching the heuristic output structure.
 _fallback_recommendation_strategy = st.text(
     min_size=5, max_size=120,
@@ -451,8 +460,8 @@ _fallback_caution_strategy = st.text(
 
 
 def _build_fallback(draw) -> dict[str, Any]:
-    """Draw a fallback dict with exactly 4 recommendations and a non-null caution."""
-    recs = [draw(_fallback_recommendation_strategy) for _ in range(4)]
+    """Draw a fallback dict with exactly 2 recommendations and a non-null caution."""
+    recs = [draw(_fallback_recommendation_strategy) for _ in range(2)]
     caution = draw(_fallback_caution_strategy)
     return {
         "source": "heuristic",
@@ -474,22 +483,22 @@ _ai_recommendation_strategy = st.text(
 
 
 # ---------------------------------------------------------------------------
-# Property 5: Parsed AI briefing always has exactly 4 recommendations
+# Property 5: Parsed AI briefing always has exactly 2 recommendations
 # Feature: ai-coach-insights, Property 5: Parsed AI briefing always has
-#          exactly 4 recommendations
+#          exactly 2 recommendations
 # **Validates: Requirements 4.6, 8.1, 8.2**
 # ---------------------------------------------------------------------------
 
 
-class TestProperty5ParsedBriefingExactly4Recommendations:
-    """For any JSON with a recommendations array of any length (0, 1, 2, 3, 5,
-    10, etc.) and any fallback dict with 4 recommendations,
-    _parse_ai_briefing returns exactly 4 recommendations."""
+class TestProperty5ParsedBriefingExactly2Recommendations:
+    """For any JSON with a recommendations array of any length and any fallback
+    dict with 2 recommendations, _parse_ai_briefing returns exactly
+    2 recommendations."""
 
     @given(data=st.data())
     @settings(max_examples=100)
-    def test_any_length_recommendations_returns_exactly_4(self, data):
-        """_parse_ai_briefing always returns exactly 4 recommendations
+    def test_any_length_recommendations_returns_exactly_2(self, data):
+        """_parse_ai_briefing always returns exactly 2 recommendations
         regardless of how many the AI returned."""
         fallback = _build_fallback(data.draw)
         num_recs = data.draw(st.integers(min_value=0, max_value=10))
@@ -507,8 +516,8 @@ class TestProperty5ParsedBriefingExactly4Recommendations:
         assert isinstance(result["recommendations"], list), (
             f"recommendations should be a list, got {type(result['recommendations'])}"
         )
-        assert len(result["recommendations"]) == 4, (
-            f"Expected exactly 4 recommendations, got {len(result['recommendations'])} "
+        assert len(result["recommendations"]) == 2, (
+            f"Expected exactly 2 recommendations, got {len(result['recommendations'])} "
             f"(AI returned {num_recs})"
         )
 
@@ -535,7 +544,7 @@ class TestProperty6FallbackCautionSubstitution:
         ai_response = _json.dumps({
             "sleep_analysis": "AI sleep analysis.",
             "activity_analysis": "AI activity analysis.",
-            "recommendations": ["r1", "r2", "r3", "r4"],
+            "recommendations": ["r1", "r2"],
             "caution": None,
         })
 
@@ -552,7 +561,7 @@ class TestProperty6FallbackCautionSubstitution:
         ai_response = _json.dumps({
             "sleep_analysis": "AI sleep analysis.",
             "activity_analysis": "AI activity analysis.",
-            "recommendations": ["r1", "r2", "r3", "r4"],
+            "recommendations": ["r1", "r2"],
             "caution": "",
         })
 
@@ -569,7 +578,7 @@ class TestProperty6FallbackCautionSubstitution:
         ai_response = _json.dumps({
             "sleep_analysis": "AI sleep analysis.",
             "activity_analysis": "AI activity analysis.",
-            "recommendations": ["r1", "r2", "r3", "r4"],
+            "recommendations": ["r1", "r2"],
         })
 
         result = _parse_ai_briefing(ai_response, fallback)

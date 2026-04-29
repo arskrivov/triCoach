@@ -4,7 +4,7 @@
  * Manages the full dashboard lifecycle:
  * - Fetches data from GET /dashboard/overview with the user's timezone header
  * - Distributes data to all card components
- * - Handles Garmin sync events (started / completed / failed)
+ * - Reacts to the shared Garmin sync lifecycle
  * - Manages loading, error, and sync notice states
  *
  * Rendered inside a Suspense boundary in page.tsx.
@@ -15,16 +15,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { postGarminSync } from "@/lib/garmin-sync-api";
 import {
-  GARMIN_SYNC_COMPLETED_EVENT,
-  GARMIN_SYNC_FAILED_EVENT,
-  GARMIN_SYNC_STARTED_EVENT,
-  type GarminSyncCompletedDetail,
-  type GarminSyncFailedDetail,
+  runGarminSyncOperation,
+  useGarminSyncReload,
+  useGarminSyncState,
 } from "@/lib/garmin-sync";
 import { extractApiError, shouldRedirectToLogin } from "@/lib/error-handling";
 import { getUserTimezone } from "@/lib/timezone";
 import type { DashboardOverview } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CoachBriefingCard } from "./coach-briefing-card";
 import { RecoveryOverviewCard } from "./recovery-overview-card";
 import { ActivityOverviewCard } from "./activity-overview-card";
@@ -39,10 +38,16 @@ export function DashboardContent() {
   const [data, setData] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [syncNotice, setSyncNotice] = useState<SyncNotice | null>(null);
   const [nowMs, setNowMs] = useState<number | null>(null);
   const noticeTimeoutRef = useRef<number | null>(null);
+  const lastFailureHandledRef = useRef<number | null>(null);
+  const {
+    isSyncing,
+    lastFailureAt,
+    lastFailureDetail,
+  } = useGarminSyncState();
 
   const loadDashboard = useCallback(async () => {
     setLoadError(null);
@@ -69,26 +74,20 @@ export function DashboardContent() {
     }, 4000);
   }, [clearSyncNoticeTimeout]);
 
-  function getErrorMessage(error: unknown): string {
-    return extractApiError(error).message;
-  }
+  const getErrorMessage = useCallback((error: unknown): string => extractApiError(error).message, []);
 
   const syncLastWeek = useCallback(async () => {
-    setSyncing(true);
     setSyncNotice(null);
     try {
-      const response = await postGarminSync("/sync/now", { timezone: getUserTimezone() });
-      await loadDashboard();
-      showSyncNotice(
-        "success",
-        `Sync complete: ${response.activities_synced} activities, ${response.health_days_synced} health days.`,
+      await runGarminSyncOperation(
+        "dashboard",
+        () => postGarminSync("/sync/now", { timezone: getUserTimezone() }),
+        getErrorMessage,
       );
-    } catch (error: unknown) {
-      showSyncNotice("error", getErrorMessage(error));
-    } finally {
-      setSyncing(false);
+    } catch {
+      // Sync failure is surfaced via shared Garmin sync state.
     }
-  }, [loadDashboard, showSyncNotice]);
+  }, [getErrorMessage]);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,45 +111,42 @@ export function DashboardContent() {
 
     void initializeDashboard();
 
-    function onGarminSyncStarted() {
-      setSyncing(true);
-      clearSyncNoticeTimeout();
-      setSyncNotice(null);
-    }
-
-    function onGarminSynced(event: Event) {
-      const detail = (event as CustomEvent<GarminSyncCompletedDetail>).detail;
-      setSyncing(false);
-      void loadDashboard()
-        .then(() => {
-          showSyncNotice(
-            "success",
-            `Synced ${detail.activitiesSynced} activities and ${detail.healthDaysSynced} health days.`,
-          );
-        })
-        .catch(() => {
-          showSyncNotice("error", "Dashboard refresh failed after sync.");
-        });
-    }
-
-    function onGarminSyncFailed(event: Event) {
-      const detail = (event as CustomEvent<GarminSyncFailedDetail>).detail;
-      setSyncing(false);
-      showSyncNotice("error", detail.message);
-    }
-
-    window.addEventListener(GARMIN_SYNC_STARTED_EVENT, onGarminSyncStarted);
-    window.addEventListener(GARMIN_SYNC_COMPLETED_EVENT, onGarminSynced);
-    window.addEventListener(GARMIN_SYNC_FAILED_EVENT, onGarminSyncFailed);
-
     return () => {
       cancelled = true;
-      window.removeEventListener(GARMIN_SYNC_STARTED_EVENT, onGarminSyncStarted);
-      window.removeEventListener(GARMIN_SYNC_COMPLETED_EVENT, onGarminSynced);
-      window.removeEventListener(GARMIN_SYNC_FAILED_EVENT, onGarminSyncFailed);
       clearSyncNoticeTimeout();
     };
-  }, [showSyncNotice, clearSyncNoticeTimeout, loadDashboard]);
+  }, [clearSyncNoticeTimeout, loadDashboard]);
+
+  useGarminSyncReload(useCallback(async (detail) => {
+    clearSyncNoticeTimeout();
+    setSyncNotice(null);
+    setRefreshing(true);
+
+    try {
+      await loadDashboard();
+      showSyncNotice(
+        "success",
+        `Synced ${detail.activitiesSynced} activities and ${detail.healthDaysSynced} health days.`,
+      );
+    } catch {
+      showSyncNotice("error", "Dashboard refresh failed after sync.");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [clearSyncNoticeTimeout, loadDashboard, showSyncNotice]));
+
+  useEffect(() => {
+    if (
+      lastFailureAt === null
+      || lastFailureDetail === null
+      || lastFailureHandledRef.current === lastFailureAt
+    ) {
+      return;
+    }
+
+    lastFailureHandledRef.current = lastFailureAt;
+    showSyncNotice("error", lastFailureDetail.message);
+  }, [lastFailureAt, lastFailureDetail, showSyncNotice]);
 
   useEffect(() => {
     const refreshNow = () => setNowMs(Date.now());
@@ -173,9 +169,9 @@ export function DashboardContent() {
     return `Last synced ${Math.floor(hours / 24)}d ago`;
   }
 
-  if (loading) return <div className="text-muted-foreground text-sm">Loading…</div>;
+  const showPlaceholderState = loading || isSyncing || refreshing;
 
-  if (loadError || !data) {
+  if ((loadError || !data) && !showPlaceholderState) {
     return (
       <div className="flex flex-col items-start gap-3 rounded-2xl border border-[--status-negative]/20 bg-[--status-negative]/10 p-5">
         <p className="text-sm font-medium text-[--status-negative]">{loadError ?? "Failed to load dashboard."}</p>
@@ -189,20 +185,17 @@ export function DashboardContent() {
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
       <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">{formatLastSync(data.last_sync_at)}</p>
-        <Button variant="outline" size="sm" onClick={() => void syncLastWeek()} disabled={syncing}>
-          {syncing ? "Syncing…" : "Sync Now"}
+        {showPlaceholderState ? (
+          <Skeleton className="h-4 w-32" />
+        ) : (
+          <p className="text-sm text-muted-foreground">{formatLastSync(data?.last_sync_at)}</p>
+        )}
+        <Button variant="outline" size="sm" onClick={() => void syncLastWeek()} disabled={isSyncing}>
+          {isSyncing ? "Syncing…" : "Sync Now"}
         </Button>
       </div>
 
-      {syncing && (
-        <div className="flex items-center gap-2 rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary shadow-sm">
-          <span className="inline-block animate-spin text-base">↻</span>
-          Syncing Garmin data…
-        </div>
-      )}
-
-      {!syncing && syncNotice && (
+      {!isSyncing && !refreshing && syncNotice && (
         <div
           className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm shadow-sm ${
             syncNotice.tone === "error"
@@ -215,18 +208,91 @@ export function DashboardContent() {
         </div>
       )}
 
-      <CoachBriefingCard briefing={data.briefing} />
+      <CoachBriefingCard briefing={data?.briefing ?? null} loading={showPlaceholderState} />
 
       <div className="grid grid-cols-1 gap-5">
-        <RecoveryOverviewCard recovery={data.recovery} analysis={data.briefing?.sleep_analysis ?? null} />
+        <RecoveryOverviewCard
+          recovery={data?.recovery ?? {
+            status: "steady",
+            headline: "",
+            last_night: {
+              date: null,
+              sleep_score: null,
+              sleep_duration_hours: null,
+              hrv_last_night: null,
+              resting_hr: null,
+              respiration_sleep: null,
+              stress_avg: null,
+              pulse_ox_avg: null,
+              morning_training_readiness_score: null,
+            },
+            metrics: [],
+            sparkline: [],
+          }}
+          analysis={data?.briefing?.sleep_analysis ?? null}
+          loading={showPlaceholderState}
+        />
         <ActivityOverviewCard
-          activity={data.activity}
-          analysis={data.briefing?.activity_analysis ?? null}
-          fitnessTimeline={data.fitness_timeline}
+          activity={data?.activity ?? {
+            status: "idle",
+            headline: "",
+            movement: {
+              steps_avg_7d: null,
+              daily_calories_avg_7d: null,
+            },
+            last_7d: {
+              sessions: 0,
+              distance_km: 0,
+              duration_hours: 0,
+              tss: 0,
+              by_discipline: {
+                swim: { sessions: 0, distance_km: 0, duration_hours: 0, avg_calories: null, avg_hr: null },
+                bike: { sessions: 0, distance_km: 0, duration_hours: 0, avg_calories: null, avg_hr: null },
+                run: { sessions: 0, distance_km: 0, duration_hours: 0, avg_calories: null, avg_hr: null },
+                strength: { sessions: 0, distance_km: 0, duration_hours: 0, avg_calories: null, avg_hr: null },
+                mobility: { sessions: 0, distance_km: 0, duration_hours: 0, avg_calories: null, avg_hr: null },
+              },
+            },
+            previous_7d: {
+              sessions: 0,
+              distance_km: 0,
+              duration_hours: 0,
+              tss: 0,
+              by_discipline: {
+                swim: { sessions: 0, distance_km: 0, duration_hours: 0, avg_calories: null, avg_hr: null },
+                bike: { sessions: 0, distance_km: 0, duration_hours: 0, avg_calories: null, avg_hr: null },
+                run: { sessions: 0, distance_km: 0, duration_hours: 0, avg_calories: null, avg_hr: null },
+                strength: { sessions: 0, distance_km: 0, duration_hours: 0, avg_calories: null, avg_hr: null },
+                mobility: { sessions: 0, distance_km: 0, duration_hours: 0, avg_calories: null, avg_hr: null },
+              },
+            },
+            last_30d: {
+              sessions: 0,
+              distance_km: 0,
+              duration_hours: 0,
+              discipline_breakdown: {},
+            },
+            fitness: {
+              ctl: null,
+              atl: null,
+              tsb: null,
+              direction: "unknown",
+              vo2max_running: null,
+              vo2max_cycling: null,
+            },
+            planned: {
+              upcoming_count: 0,
+              next_workout: null,
+              completion_rate_this_week: null,
+            },
+          }}
+          analysis={data?.briefing?.activity_analysis ?? null}
+          fitnessTimeline={data?.fitness_timeline}
+          loading={showPlaceholderState}
         />
       </div>
 
-      <UpcomingWorkoutsCard workouts={data.upcoming_workouts} />
+      <UpcomingWorkoutsCard workouts={data?.upcoming_workouts ?? []} loading={showPlaceholderState} />
     </div>
   );
 }

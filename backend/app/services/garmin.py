@@ -12,6 +12,22 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+_GARMIN_AUTH_FAILURE_PHRASES = (
+    "invalid username-password",
+    "invalid user",
+    "unauthorized",
+    "401",
+    "session expired",
+    "not authenticated",
+    "authentication failed",
+    "login/password",
+    "login password",
+    "missing credentials",
+    "credentials required",
+    "authentication required",
+    "login required",
+)
+
 
 def _fernet() -> Fernet:
     key = settings.garmin_encryption_key
@@ -44,6 +60,11 @@ async def connect_garmin(email: str, password: str) -> tuple[Garmin, dict]:
     client.login()
     token_data = client.client.dumps()
     return client, {"token_store": token_data, "email": email}
+
+
+def is_garmin_auth_error(exc: Exception) -> bool:
+    err_str = str(exc).lower()
+    return any(phrase in err_str for phrase in _GARMIN_AUTH_FAILURE_PHRASES)
 
 
 async def import_garmin_token_store(
@@ -100,14 +121,7 @@ def restore_client(session_data: dict) -> tuple[Garmin, bool]:
                 break
             except Exception as exc:
                 last_exc = exc
-                err_str = str(exc).lower()
-                if any(phrase in err_str for phrase in [
-                    "invalid username-password",
-                    "invalid user",
-                    "unauthorized",
-                    "401",
-                    "not authenticated",
-                ]):
+                if is_garmin_auth_error(exc):
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         detail="Garmin session expired — please reconnect your Garmin account in Settings.",

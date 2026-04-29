@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { dispatchGarminSyncCompleted, resetGarminSyncStateForTests } from "@/lib/garmin-sync";
 import {
   AthleteProfileCard,
   SECTIONS,
@@ -145,8 +146,17 @@ describe("SourceBadge", () => {
 describe("AthleteProfileCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetGarminSyncStateForTests();
     vi.mocked(api.get).mockResolvedValue({ data: mockProfile });
     vi.mocked(api.put).mockResolvedValue({ data: mockProfile });
+  });
+
+  it("renders pulsing placeholders while the profile is still loading", () => {
+    vi.mocked(api.get).mockImplementation(() => new Promise(() => {}));
+
+    const { container } = render(<AthleteProfileCard />);
+
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
   });
 
   it("renders all section headings", async () => {
@@ -330,6 +340,33 @@ describe("AthleteProfileCard", () => {
           notes: "Left knee pain. Avoid downhill running and heavy lunges.",
         })
       );
+    });
+  });
+
+  it("reloads profile data after Garmin sync completes when the form is clean", async () => {
+    const updatedProfile = {
+      ...mockProfile,
+      threshold_pace_sec_per_km: 265,
+    };
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({ data: mockProfile })
+      .mockResolvedValueOnce({ data: updatedProfile });
+
+    render(<AthleteProfileCard />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/run threshold pace/i)).toHaveValue(270);
+    });
+
+    dispatchGarminSyncCompleted({
+      activitiesSynced: 3,
+      healthDaysSynced: 2,
+      source: "sidebar",
+    });
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledTimes(2);
+      expect(screen.getByLabelText(/run threshold pace/i)).toHaveValue(265);
     });
   });
 });

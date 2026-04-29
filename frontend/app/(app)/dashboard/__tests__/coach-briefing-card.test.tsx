@@ -24,6 +24,11 @@ describe("CoachBriefingCard", () => {
     render(<CoachBriefingCard briefing={mockBriefing} />);
     expect(screen.getByText("Complete the planned 10km run")).toBeInTheDocument();
     expect(screen.getByText("Focus on easy effort")).toBeInTheDocument();
+    expect(
+      screen.getByText("Sleep was restorative last night. Training load is building steadily."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Summary")).not.toBeInTheDocument();
+    expect(screen.queryByText("Suggestions")).not.toBeInTheDocument();
   });
 
   it("shows AI-enhanced badge for ai source", () => {
