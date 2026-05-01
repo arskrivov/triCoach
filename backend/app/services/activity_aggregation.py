@@ -50,7 +50,16 @@ def upcoming_workout_payload(workout: WorkoutRow) -> dict[str, Any] | None:
         Dict with id, name, discipline, scheduled_date, estimated_duration_seconds,
         estimated_tss, and description fields, or None if no scheduled date.
     """
-    scheduled_date = workout.scheduled_date or (workout.content or {}).get("scheduled_date")
+    content = workout.content if isinstance(workout.content, dict) else {}
+    if content.get("type") == "skipped":
+        return None
+
+    # Skipped / cancelled workouts are sometimes persisted with zero duration
+    # so they remain in plan history, but they should not count as upcoming.
+    if workout.estimated_duration_seconds is not None and workout.estimated_duration_seconds <= 0:
+        return None
+
+    scheduled_date = workout.scheduled_date or content.get("scheduled_date")
     if not scheduled_date:
         return None
     return {

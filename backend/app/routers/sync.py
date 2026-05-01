@@ -10,7 +10,7 @@ from app.database import get_supabase
 from app.models import UserRow
 from app.services.auth import get_current_user
 from app.services.dashboard import build_dashboard_overview
-from app.services.garmin import is_garmin_auth_error
+from app.services.garmin import get_garmin_client, is_garmin_auth_error
 from app.services.garmin_sync import sync_activities, sync_daily_health
 from app.tasks import analyze_activity, trigger_full_sync
 
@@ -53,8 +53,19 @@ async def _run_sync(
     timezone_name: str | None = None,
 ) -> SyncResponse:
     try:
-        activities, activity_files = await sync_activities(current_user.id, sb, days_back=days_back)
-        health, missing_metrics = await sync_daily_health(current_user.id, sb, days_back=days_back)
+        client = await get_garmin_client(current_user.id, sb)
+        activities, activity_files = await sync_activities(
+            current_user.id,
+            sb,
+            days_back=days_back,
+            client=client,
+        )
+        health, missing_metrics = await sync_daily_health(
+            current_user.id,
+            sb,
+            days_back=days_back,
+            client=client,
+        )
         try:
             res = await sb.table("activities").select("id").eq("user_id", current_user.id).is_(
                 "ai_analysis", "null"

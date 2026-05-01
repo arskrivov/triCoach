@@ -312,6 +312,37 @@ class TestPlannedWorkoutsForBriefingDate:
             "estimated_tss": 50,
         }]
 
+    def test_excludes_skipped_and_zero_duration_rows(self):
+        workouts = [
+            _make_workout_row(id="w1", discipline="RUN", scheduled_date="2024-01-15"),
+            _make_workout_row(
+                id="w2",
+                discipline="RUN",
+                scheduled_date="2024-01-15",
+                estimated_duration_seconds=0,
+                estimated_tss=0,
+                content={"type": "skipped", "reason": "recovery day"},
+            ),
+            _make_workout_row(
+                id="w3",
+                discipline="SWIM",
+                scheduled_date="2024-01-15",
+                estimated_duration_seconds=0,
+                estimated_tss=20,
+                content={},
+            ),
+        ]
+
+        result = _planned_workouts_for_briefing_date(workouts, date(2024, 1, 15))
+
+        assert result == [{
+            "id": "w1",
+            "discipline": "RUN",
+            "scheduled_date": "2024-01-15",
+            "estimated_duration_seconds": 3600,
+            "estimated_tss": 50,
+        }]
+
 
 class TestBuildAiPrompt:
     def test_sanitizes_planned_workouts_today_payload(self):
