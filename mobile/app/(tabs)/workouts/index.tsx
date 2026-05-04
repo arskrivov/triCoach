@@ -106,8 +106,17 @@ function resolveWorkoutStatus(workout: PlanWorkout): WorkoutStatus {
   const todayStr = today.toISOString().slice(0, 10);
   const scheduledStr = scheduled.toISOString().slice(0, 10);
 
+  // Check if workout content is marked as skipped
+  const content = workout.content;
+  if (content && typeof content === "object" && (content as any).type === "skipped") {
+    return "skipped";
+  }
+
+  // Backend provides completion matching — use it
+  if (workout.completed_by_activity_id) return "completed";
+
   if (scheduledStr === todayStr) return "today";
-  if (scheduled < today) return "completed";
+  if (scheduled < today) return "skipped";
   return "upcoming";
 }
 

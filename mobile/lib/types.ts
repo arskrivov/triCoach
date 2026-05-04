@@ -301,6 +301,10 @@ export interface TrainingPlan {
 export interface PlanWorkout extends PlannedWorkout {
   plan_week: number | null;
   plan_day: number | null;
+  completed_by_activity_id: string | null;
+  completed_by_activity_name: string | null;
+  completed_by_activity_start_time: string | null;
+  content?: any;
 }
 
 export interface WeekCompliance {
