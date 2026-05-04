@@ -92,9 +92,10 @@ function RootLayoutNav() {
     );
   }
 
-  // When authenticated, show the main app
+  // When authenticated, redirect to tabs
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+      <Redirect href="/(tabs)/dashboard" />
       <Slot />
     </ThemeProvider>
   );

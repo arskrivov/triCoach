@@ -182,6 +182,10 @@ that date.
 5=Saturday, 6=Sunday.
 - Every workout must have a valid discipline from the list above.
 - Include rest days (days with no workouts) as appropriate.
+- FIXED TRAINING DAYS: If the athlete notes mention specific days for \
+specific sessions (e.g. "Thursday runs", "Sunday swim"), these are HARD \
+constraints. You MUST schedule those disciplines on those exact days every \
+week. Build the rest of the plan around these fixed days.
 - You MUST generate ALL weeks from week 1 through the final race week. \
 Do NOT truncate or stop early.
 - Keep ALL text fields SHORT: descriptions ≤ 8 words, notes ≤ 10 words. \

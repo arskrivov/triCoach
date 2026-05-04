@@ -280,26 +280,45 @@ function AIGeneratedContent({ content, colors }: { content: any; colors: any }) 
           <Text style={[styles.contentTitle, { color: colors.foreground }]}>
             💪 Main Set
           </Text>
-          {main.map((item: any, i: number) => (
-            <View
-              key={i}
-              style={[styles.aiExerciseRow, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
-            >
-              <View style={styles.aiExerciseHeader}>
-                <Text style={[styles.aiExerciseNumber, { color: colors.primary }]}>
-                  {i + 1}
+          {main.map((item: any, i: number) => {
+            // Handle all content formats:
+            // 1. String: "3x12 Bulgarian split squats at 15kg, 60s rest"
+            // 2. Object with description: {description: "...", duration_min, zone}
+            // 3. Object with exercise: {exercise: "Split squat", sets: 2, reps: 10, weight: "6kg", rest_sec: 30}
+            let title = "";
+            let subtitle = "";
+
+            if (typeof item === "string") {
+              title = item;
+            } else if (item.exercise) {
+              // Structured exercise format
+              title = item.exercise;
+              const parts: string[] = [];
+              if (item.sets && item.reps) parts.push(`${item.sets}×${item.reps}`);
+              if (item.weight) parts.push(`${item.weight}`);
+              if (item.rest_sec) parts.push(`${item.rest_sec}s rest`);
+              subtitle = parts.join(" · ");
+            } else if (item.description) {
+              title = item.description;
+              if (item.duration_min > 0) subtitle = `~${item.duration_min} min`;
+            }
+
+            return (
+              <View
+                key={i}
+                style={[styles.aiExerciseRow, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+              >
+                <Text style={[styles.aiExerciseText, { color: colors.foreground }]}>
+                  {title || "Unnamed exercise"}
                 </Text>
-                {item.duration_min > 0 && (
-                  <Text style={[styles.aiExerciseDuration, { color: colors.mutedForeground }]}>
-                    ~{item.duration_min} min
+                {subtitle ? (
+                  <Text style={[styles.aiExerciseDuration, { color: colors.mutedForeground, marginTop: 2 }]}>
+                    {subtitle}
                   </Text>
-                )}
+                ) : null}
               </View>
-              <Text style={[styles.aiExerciseText, { color: colors.foreground }]}>
-                {item.description}
-              </Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
 

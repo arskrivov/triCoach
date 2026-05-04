@@ -416,27 +416,64 @@ def convert_workout_to_garmin(workout: WorkoutRow) -> dict[str, Any]:
 
     if isinstance(main_set, list):
         for block in main_set:
-            if not isinstance(block, dict):
+            # Normalize string items to dict format
+            if isinstance(block, str):
+                block = {"description": block, "duration_min": 0, "zone": ""}
+            elif not isinstance(block, dict):
                 continue
 
             description = block.get("description", "")
 
-            # STRENGTH: parse exercise description into structured step
-            if is_strength and description:
-                exercise = _parse_strength_exercise(description)
-                steps.append(
-                    _build_strength_exercise_step(
-                        step_order=step_order,
-                        exercise_name=exercise["name"],
-                        sets=exercise["sets"],
-                        reps=exercise["reps"],
-                        weight_kg=exercise["weight_kg"],
-                        rest_seconds=exercise["rest_seconds"],
-                        description=description,
+            # STRENGTH: handle both structured format and description format
+            if is_strength:
+                # New structured format: {exercise, sets, reps, weight, rest_sec}
+                if block.get("exercise"):
+                    exercise_name = block["exercise"]
+                    sets = int(block.get("sets", 1))
+                    reps = int(block.get("reps", 10))
+                    weight_str = str(block.get("weight", ""))
+                    # Parse weight: could be "6kg", "band", "bodyweight", or a number
+                    weight_kg = 0.0
+                    if weight_str.replace(".", "").replace(",", "").isdigit():
+                        weight_kg = float(weight_str)
+                    elif "kg" in weight_str:
+                        try:
+                            weight_kg = float(weight_str.replace("kg", "").strip())
+                        except ValueError:
+                            pass
+                    rest_seconds = int(block.get("rest_sec", 60))
+                    desc = f"{sets}x{reps} {exercise_name}"
+                    if weight_str and weight_str not in ("0", ""):
+                        desc += f" @ {weight_str}"
+                    steps.append(
+                        _build_strength_exercise_step(
+                            step_order=step_order,
+                            exercise_name=exercise_name,
+                            sets=sets,
+                            reps=reps,
+                            weight_kg=weight_kg,
+                            rest_seconds=rest_seconds,
+                            description=desc,
+                        )
                     )
-                )
-                step_order += 1
-                continue
+                    step_order += 1
+                    continue
+                # Old description format: parse "3x12 Bulgarian split squats at 15kg, 60s rest"
+                elif description:
+                    exercise = _parse_strength_exercise(description)
+                    steps.append(
+                        _build_strength_exercise_step(
+                            step_order=step_order,
+                            exercise_name=exercise["name"],
+                            sets=exercise["sets"],
+                            reps=exercise["reps"],
+                            weight_kg=exercise["weight_kg"],
+                            rest_seconds=exercise["rest_seconds"],
+                            description=description,
+                        )
+                    )
+                    step_order += 1
+                    continue
 
             # MOBILITY/YOGA: each pose/stretch as a named timed step
             if is_mobility and description:

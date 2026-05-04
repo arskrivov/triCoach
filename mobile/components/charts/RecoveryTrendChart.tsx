@@ -1,13 +1,14 @@
 /**
- * RecoveryTrendChart — 7-day recovery trend using react-native-gifted-charts.
+ * RecoveryTrendChart — Interactive 7-day recovery trend chart.
  *
- * Shows Sleep Score, HRV, and Resting HR as line charts.
- * Works in Expo Go (no native modules needed).
+ * Shows Sleep Score, HRV, and Resting HR as line charts with touch-based
+ * pointer that shows values for the selected day. Uses react-native-gifted-charts
+ * pointerConfig for native-feeling interaction.
  *
- * @see Requirements 5.7, 14.1, 14.2
+ * @see Requirements 5.7, 14.1, 14.2, 14.5
  */
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
 
@@ -23,23 +24,28 @@ export interface RecoveryTrendChartProps {
 function formatDateLabel(dateStr: string): string {
   const parts = dateStr.split("-");
   if (parts.length < 3) return dateStr;
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
   return `${months[parseInt(parts[1], 10) - 1]} ${parseInt(parts[2], 10)}`;
 }
 
-export function RecoveryTrendChart({ data, height = 180 }: RecoveryTrendChartProps) {
+export function RecoveryTrendChart({ data, height = 200 }: RecoveryTrendChartProps) {
   const colors = useThemeColors();
 
   const { sleepData, hrvData, hrData } = useMemo(() => {
-    const sleep: Array<{ value: number; label?: string }> = [];
+    const sleep: Array<{ value: number; label?: string; date?: string }> = [];
     const hrv: Array<{ value: number }> = [];
     const hr: Array<{ value: number }> = [];
 
     data.forEach((point, i) => {
-      const showLabel = i === 0 || i === data.length - 1 || i === Math.floor(data.length / 2);
+      const showLabel =
+        i === 0 || i === data.length - 1 || i === Math.floor(data.length / 2);
       sleep.push({
         value: point.sleep_score ?? 0,
         label: showLabel ? formatDateLabel(point.date) : "",
+        date: formatDateLabel(point.date),
       });
       hrv.push({ value: point.hrv ?? 0 });
       hr.push({ value: point.resting_hr ?? 0 });
@@ -51,7 +57,9 @@ export function RecoveryTrendChart({ data, height = 180 }: RecoveryTrendChartPro
   if (data.length === 0) {
     return (
       <Card>
-        <Text style={[styles.header, { color: colors.foreground }]}>Recovery Trend</Text>
+        <Text style={[styles.header, { color: colors.foreground }]}>
+          Recovery Trend
+        </Text>
         <View style={[styles.emptyContainer, { height }]}>
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
             No recovery data available
@@ -63,17 +71,19 @@ export function RecoveryTrendChart({ data, height = 180 }: RecoveryTrendChartPro
 
   return (
     <Card>
-      <Text style={[styles.header, { color: colors.foreground }]}>Recovery Trend</Text>
+      <Text style={[styles.header, { color: colors.foreground }]}>
+        Recovery Trend
+      </Text>
 
       <LineChart
         data={sleepData}
         data2={hrvData}
         data3={hrData}
         height={height}
-        width={280}
-        spacing={data.length > 1 ? 280 / (data.length - 1) : 40}
-        initialSpacing={8}
-        endSpacing={8}
+        spacing={data.length > 1 ? Math.floor(260 / (data.length - 1)) : 40}
+        initialSpacing={0}
+        endSpacing={0}
+        scrollToEnd
         color1={colors.primary}
         color2={colors.statusPositive}
         color3={colors.statusNegative}
@@ -90,21 +100,83 @@ export function RecoveryTrendChart({ data, height = 180 }: RecoveryTrendChartPro
         rulesColor={colors.cardBorder}
         rulesType="dashed"
         backgroundColor={colors.card}
+        // Interactive pointer config
+        pointerConfig={{
+          pointerStripHeight: height,
+          pointerStripColor: colors.mutedForeground,
+          pointerStripWidth: 1,
+          pointerColor: colors.primary,
+          radius: 5,
+          pointerLabelWidth: 160,
+          pointerLabelHeight: 90,
+          activatePointersOnLongPress: false,
+          autoAdjustPointerLabelPosition: true,
+          pointerLabelComponent: (items: any[]) => {
+            // Read date from the data point itself (stored in sleep data)
+            const sleepItem = items?.[0] ?? {};
+            const hrvItem = items?.[1] ?? {};
+            const hrItem = items?.[2] ?? {};
+            const dateLabel = (sleepItem as any).date || "";
+            const sleepVal = sleepItem.value ?? 0;
+            const hrvVal = hrvItem.value ?? 0;
+            const hrVal = hrItem.value ?? 0;
+
+            return (
+              <View
+                style={[
+                  styles.tooltip,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.cardBorder,
+                  },
+                ]}
+              >
+                <Text style={[styles.tooltipDate, { color: colors.foreground }]}>
+                  {dateLabel}
+                </Text>
+                <View style={styles.tooltipRow}>
+                  <View style={[styles.tooltipDot, { backgroundColor: colors.primary }]} />
+                  <Text style={[styles.tooltipText, { color: colors.foreground }]}>
+                    Sleep: {sleepVal}
+                  </Text>
+                </View>
+                <View style={styles.tooltipRow}>
+                  <View style={[styles.tooltipDot, { backgroundColor: colors.statusPositive }]} />
+                  <Text style={[styles.tooltipText, { color: colors.foreground }]}>
+                    HRV: {hrvVal} ms
+                  </Text>
+                </View>
+                <View style={styles.tooltipRow}>
+                  <View style={[styles.tooltipDot, { backgroundColor: colors.statusNegative }]} />
+                  <Text style={[styles.tooltipText, { color: colors.foreground }]}>
+                    RHR: {hrVal} bpm
+                  </Text>
+                </View>
+              </View>
+            );
+          },
+        }}
       />
 
       {/* Legend */}
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
-          <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Sleep</Text>
+          <Text style={[styles.legendText, { color: colors.mutedForeground }]}>
+            Sleep
+          </Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: colors.statusPositive }]} />
-          <Text style={[styles.legendText, { color: colors.mutedForeground }]}>HRV</Text>
+          <Text style={[styles.legendText, { color: colors.mutedForeground }]}>
+            HRV
+          </Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: colors.statusNegative }]} />
-          <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Rest HR</Text>
+          <Text style={[styles.legendText, { color: colors.mutedForeground }]}>
+            Rest HR
+          </Text>
         </View>
       </View>
     </Card>
@@ -116,10 +188,37 @@ const styles = StyleSheet.create({
   emptyContainer: { alignItems: "center", justifyContent: "center" },
   emptyText: { fontSize: 14 },
   legend: {
-    flexDirection: "row", justifyContent: "center",
-    gap: 16, marginTop: 10, paddingTop: 8,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 16,
+    marginTop: 10,
+    paddingTop: 8,
   },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontSize: 12, fontWeight: "500" },
+  tooltip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  tooltipDate: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  tooltipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 2,
+  },
+  tooltipDot: { width: 6, height: 6, borderRadius: 3 },
+  tooltipText: { fontSize: 11, fontWeight: "500" },
 });
