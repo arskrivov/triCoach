@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: tricoach-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: GARMIN_ENCRYPTION_KEY
+        sync: false
+      - key: GRAPHHOPPER_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_COACH_MODEL
+        value: gpt-4.1-mini
+      - key: OPENAI_ANALYSIS_MODEL
+        value: gpt-4.1-mini
+      - key: REDIS_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ENVIRONMENT
+        value: production

@@ -53,6 +53,14 @@ _STEP_RECOVERY = {"stepTypeId": 4, "stepTypeKey": "recovery", "displayOrder": 4}
 _STEP_REST = {"stepTypeId": 5, "stepTypeKey": "rest", "displayOrder": 5}
 _STEP_REPEAT = {"stepTypeId": 6, "stepTypeKey": "repeat", "displayOrder": 6}
 
+# Condition for rep-based exercises (strength)
+_CONDITION_REPS = {
+    "conditionTypeId": 6,
+    "conditionTypeKey": "reps",
+    "displayOrder": 6,
+    "displayable": True,
+}
+
 _CONDITION_TIME = {
     "conditionTypeId": 2,
     "conditionTypeKey": "time",
@@ -152,8 +160,50 @@ def _build_step(
     }
     if description:
         step["description"] = description
+        # Extract a short name for the watch face display.
+        # Garmin watches show stepName during the workout, not description.
+        # For strength exercises like "3x10 Bulgarian split squats, 60s rest"
+        # extract just the exercise name part.
+        step_name = _extract_step_name(description)
+        if step_name:
+            step["stepName"] = step_name
 
     return step
+
+
+def _extract_step_name(description: str) -> str | None:
+    """Extract a short exercise name from a workout step description.
+
+    Handles patterns like:
+    - "3x10 Bulgarian split squats (bodyweight), 60s rest" → "Bulgarian split squats"
+    - "5 min stationary bike (light resistance)" → "Stationary bike"
+    - "Foam roll ITB and glutes" → "Foam roll ITB and glutes"
+    """
+    if not description:
+        return None
+
+    text = description.strip()
+
+    # Remove leading sets×reps pattern: "3x10 ", "2x45s ", "3x12 "
+    import re
+    text = re.sub(r"^\d+x\d+s?\s+", "", text)
+
+    # Remove parenthetical notes: "(bodyweight or 10kg dumbbells)"
+    text = re.sub(r"\s*\([^)]*\)", "", text)
+
+    # Remove trailing rest/duration info: ", 60s rest", ", 45s rest"
+    text = re.sub(r",\s*\d+s\s+rest.*$", "", text, flags=re.IGNORECASE)
+
+    # Remove trailing instructions after comma: ", focus on left side..."
+    text = re.sub(r",\s+focus\s+.*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r",\s+slow\s+.*$", "", text, flags=re.IGNORECASE)
+
+    # Truncate to 30 chars for watch display
+    text = text.strip()
+    if len(text) > 30:
+        text = text[:27].rstrip() + "..."
+
+    return text if text else None
 
 
 def _build_repeat_group(
@@ -172,6 +222,152 @@ def _build_repeat_group(
         "endConditionValue": float(iterations),
         "smartRepeat": False,
     }
+
+
+def _build_strength_exercise_step(
+    step_order: int,
+    exercise_name: str,
+    sets: int,
+    reps: int,
+    weight_kg: float | None = None,
+    rest_seconds: int = 60,
+    description: str | None = None,
+) -> dict[str, Any]:
+    """Build a Garmin strength exercise step with repeat group.
+
+    Creates a repeat group (sets) containing an exercise step (reps)
+    and a rest step. The exercise name is shown on the watch face.
+    """
+    # The exercise step (what shows on the watch during the set)
+    exercise_step: dict[str, Any] = {
+        "type": "ExecutableStepDTO",
+        "stepOrder": 1,
+        "stepType": {**_STEP_INTERVAL},
+        "endCondition": {**_CONDITION_REPS},
+        "endConditionValue": float(reps),
+        "targetType": {**_TARGET_NO_TARGET},
+        "stepName": exercise_name[:30],  # Garmin shows this on the watch face
+    }
+    if description:
+        exercise_step["description"] = description
+    if weight_kg:
+        exercise_step["description"] = f"{weight_kg}kg" + (f" - {description}" if description else "")
+
+    # Rest step between sets
+    rest_step: dict[str, Any] = {
+        "type": "ExecutableStepDTO",
+        "stepOrder": 2,
+        "stepType": {**_STEP_REST},
+        "endCondition": {**_CONDITION_TIME},
+        "endConditionValue": float(rest_seconds),
+        "targetType": {**_TARGET_NO_TARGET},
+        "stepName": "Rest",
+    }
+
+    # Wrap in a repeat group for the number of sets
+    return {
+        "type": "RepeatGroupDTO",
+        "stepOrder": step_order,
+        "stepType": {**_STEP_REPEAT},
+        "numberOfIterations": sets,
+        "workoutSteps": [exercise_step, rest_step],
+        "endCondition": {**_CONDITION_ITERATIONS},
+        "endConditionValue": float(sets),
+        "smartRepeat": False,
+    }
+
+
+def _parse_strength_exercise(description: str) -> dict[str, Any]:
+    """Parse a strength exercise description into structured data.
+
+    Handles patterns like:
+    - "3x10 Bulgarian split squats at 12kg dumbbells, 60s rest"
+    - "4x8 back squat at 70kg, 90s rest"
+    - "3x12 walking lunges with 16kg dumbbells, 60s rest"
+    - "2x45s suitcase hold, heavy dumbbell"
+    """
+    import re
+
+    result = {
+        "name": description,
+        "sets": 3,
+        "reps": 10,
+        "weight_kg": None,
+        "rest_seconds": 60,
+    }
+
+    # Extract sets x reps: "3x10", "4x8"
+    sets_reps_match = re.match(r"(\d+)x(\d+)s?\s+(.+)", description)
+    if sets_reps_match:
+        result["sets"] = int(sets_reps_match.group(1))
+        result["reps"] = int(sets_reps_match.group(2))
+        remaining = sets_reps_match.group(3)
+    else:
+        remaining = description
+
+    # Extract exercise name (before "at", "with", or comma)
+    name_match = re.match(r"([^,]+?)(?:\s+(?:at|with)\s+|\s*,)", remaining)
+    if name_match:
+        result["name"] = name_match.group(1).strip()
+    else:
+        # Take everything before the first comma
+        result["name"] = remaining.split(",")[0].strip()
+
+    # Extract weight: "70kg", "12kg dumbbells", "16kg"
+    weight_match = re.search(r"(\d+(?:\.\d+)?)\s*kg", description)
+    if weight_match:
+        result["weight_kg"] = float(weight_match.group(1))
+
+    # Extract rest: "60s rest", "90s rest"
+    rest_match = re.search(r"(\d+)s\s+rest", description)
+    if rest_match:
+        result["rest_seconds"] = int(rest_match.group(1))
+
+    # Truncate name for watch display
+    if len(result["name"]) > 30:
+        result["name"] = result["name"][:27] + "..."
+
+    return result
+
+
+def _parse_mobility_pose(description: str) -> dict[str, Any]:
+    """Parse a mobility/yoga pose description into name and duration.
+
+    Handles patterns like:
+    - "Pigeon pose 60s/side"
+    - "Downward dog 45s"
+    - "Cat-cow 30s"
+    - "Foam roll quads and hamstrings, 2 min"
+    - "Hip flexor stretch 45s/side, gentle"
+    """
+    import re
+
+    result = {
+        "name": description[:30],
+        "duration_min": 1,  # default 1 min per pose
+    }
+
+    # Try to extract duration in seconds: "60s", "45s"
+    sec_match = re.search(r"(\d+)\s*s(?:/side|ec)?", description)
+    if sec_match:
+        secs = int(sec_match.group(1))
+        # If /side, double it
+        if "/side" in description:
+            secs *= 2
+        result["duration_min"] = max(0.5, secs / 60)
+
+    # Try to extract duration in minutes: "2 min", "5min"
+    min_match = re.search(r"(\d+)\s*min", description)
+    if min_match:
+        result["duration_min"] = int(min_match.group(1))
+
+    # Extract pose name (before duration or comma)
+    name = re.sub(r"\s*\d+\s*(?:s(?:/side|ec)?|min).*$", "", description).strip()
+    name = re.sub(r",.*$", "", name).strip()
+    if name:
+        result["name"] = name[:30]
+
+    return result
 
 
 def convert_workout_to_garmin(workout: WorkoutRow) -> dict[str, Any]:
@@ -215,14 +411,55 @@ def convert_workout_to_garmin(workout: WorkoutRow) -> dict[str, Any]:
 
     # --- Main set ---
     main_set = content.get("main")
+    is_strength = workout.discipline == "STRENGTH"
+    is_mobility = workout.discipline in ("MOBILITY", "YOGA")
+
     if isinstance(main_set, list):
         for block in main_set:
             if not isinstance(block, dict):
                 continue
 
+            description = block.get("description", "")
+
+            # STRENGTH: parse exercise description into structured step
+            if is_strength and description:
+                exercise = _parse_strength_exercise(description)
+                steps.append(
+                    _build_strength_exercise_step(
+                        step_order=step_order,
+                        exercise_name=exercise["name"],
+                        sets=exercise["sets"],
+                        reps=exercise["reps"],
+                        weight_kg=exercise["weight_kg"],
+                        rest_seconds=exercise["rest_seconds"],
+                        description=description,
+                    )
+                )
+                step_order += 1
+                continue
+
+            # MOBILITY/YOGA: each pose/stretch as a named timed step
+            if is_mobility and description:
+                pose_info = _parse_mobility_pose(description)
+                # Use block's duration_min as fallback if pose parsing didn't find one
+                block_duration = block.get("duration_min", 1)
+                duration_to_use = pose_info["duration_min"] if pose_info["duration_min"] != 1 else block_duration
+                steps.append(
+                    _build_step(
+                        step_order=step_order,
+                        step_type={**_STEP_INTERVAL},
+                        duration_minutes=duration_to_use,
+                        description=description,
+                    )
+                )
+                # Override stepName with the pose name for watch display
+                steps[-1]["stepName"] = pose_info["name"]
+                step_order += 1
+                continue
+
+            # ENDURANCE: timed intervals with optional repeats
             duration = block.get("duration_min", 10)
             zone = block.get("zone")
-            description = block.get("description")
             repeats = block.get("repeats")
             rest_min = block.get("rest_min", 0)
 

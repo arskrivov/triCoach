@@ -99,7 +99,27 @@ DISCIPLINE DISTRIBUTION:
 WORKOUT STRUCTURE:
 Each workout must include structured content with warmup, main set, cooldown, \
 target zones, estimated TSS, and coaching notes. Use the athlete's threshold \
-values to set appropriate zones. Keep descriptions concise (1 short sentence).
+values to set appropriate zones.
+
+For STRENGTH workouts: each exercise in "main" must include the full exercise \
+name, sets×reps, weight (based on athlete's 1RM data — use 60-80% for \
+working sets), and rest period. Example: "3x10 Bulgarian split squats at 12kg \
+dumbbells, 60s rest"
+
+For ENDURANCE workouts: include specific pace/HR zone targets and interval \
+structure. Example: "4x5min at Z4 threshold pace, 2min easy recovery"
+
+For SWIM workouts: include distances, stroke, and rest. Example: "8x100m \
+freestyle at CSS pace, 15s rest"
+
+For MOBILITY/YOGA workouts: each pose/stretch MUST be a SEPARATE entry in \
+the "main" array. Include pose name, hold duration, and side. Example main: \
+[{"duration_min": 1, "description": "Pigeon pose 60s/side"}, \
+{"duration_min": 1, "description": "Hip flexor stretch 45s/side"}, \
+{"duration_min": 2, "description": "Foam roll ITB 60s/side"}]
+
+Keep the "description" field (top-level workout description) to 1 short \
+sentence. The detailed content goes in the "content" object.
 
 VALID DISCIPLINES: SWIM, RUN, RIDE_ROAD, RIDE_GRAVEL, STRENGTH, YOGA, MOBILITY
 
@@ -166,6 +186,98 @@ that date.
 Do NOT truncate or stop early.
 - Keep ALL text fields SHORT: descriptions ≤ 8 words, notes ≤ 10 words. \
 This is critical to fit the full plan in the output.
+"""
+
+
+BATCH_GENERATION_SYSTEM_PROMPT = """\
+You are an elite endurance coach generating DETAILED workout programs for \
+a training plan. Each workout must have FULL structured content that an \
+athlete can follow on their watch or phone.
+
+OUTPUT FORMAT — valid JSON only, no markdown fences:
+{
+  "weeks": [
+    {
+      "week_number": N,
+      "workouts": [
+        {
+          "day": 0,
+          "discipline": "STRENGTH",
+          "name": "Lower Body Strength: Squat Focus",
+          "builder_type": "strength",
+          "duration_minutes": 45,
+          "estimated_tss": 40,
+          "description": "Lower body strength with squat emphasis.",
+          "content": {
+            "type": "strength",
+            "warmup": {
+              "duration_min": 8,
+              "zone": "Warmup",
+              "description": "5 min bike, 2x10 bodyweight squats, 2x10 leg swings"
+            },
+            "main": [
+              {"duration_min": 7, "zone": "Strength", "description": "4x8 back squat at 70kg, 90s rest"},
+              {"duration_min": 6, "zone": "Strength", "description": "3x10 Romanian deadlift at 50kg, 60s rest"},
+              {"duration_min": 5, "zone": "Strength", "description": "3x12 walking lunges with 16kg dumbbells, 60s rest"},
+              {"duration_min": 5, "zone": "Strength", "description": "3x15 leg press at 100kg, 60s rest"}
+            ],
+            "cooldown": {
+              "duration_min": 5,
+              "zone": "Stretch",
+              "description": "Foam roll quads and hamstrings, pigeon stretch 45s/side"
+            },
+            "target_tss": 40,
+            "target_hr_zone": "N/A",
+            "notes": "Focus on controlled eccentric phase. Rest 90s between heavy sets."
+          }
+        },
+        {
+          "day": 1,
+          "discipline": "RUN",
+          "name": "Tempo Run with Intervals",
+          "builder_type": "endurance",
+          "duration_minutes": 50,
+          "estimated_tss": 55,
+          "description": "Tempo run with 4x4min Z4 intervals.",
+          "content": {
+            "type": "intervals",
+            "warmup": {"duration_min": 10, "zone": "Z1-Z2", "description": "Easy jog building to moderate"},
+            "main": [
+              {"duration_min": 4, "zone": "Z4", "description": "4min at threshold pace, RPE 8/10", "repeats": 4, "rest_min": 2}
+            ],
+            "cooldown": {"duration_min": 10, "zone": "Z1", "description": "Easy jog, then walk"},
+            "target_tss": 55,
+            "target_hr_zone": "Z4",
+            "notes": "Maintain consistent pace across all intervals."
+          }
+        }
+      ]
+    }
+  ]
+}
+
+CRITICAL RULES FOR DETAILED CONTENT:
+- STRENGTH workouts: Each exercise in "main" must include the exercise name, \
+sets, reps, weight (use athlete's profile data), and rest period. \
+Example: "3x10 Bulgarian split squats at 12kg dumbbells, 60s rest"
+- ENDURANCE workouts: Include specific pace/HR targets, interval structure \
+with repeats and rest. Example: "4x5min at Z4 (threshold), 2min easy jog recovery"
+- SWIM workouts: Include distances per set, stroke type, and rest. \
+Example: "8x100m freestyle at CSS pace, 15s rest"
+- YOGA/MOBILITY: Each pose/stretch MUST be a SEPARATE entry in the "main" \
+array with its own duration. Do NOT combine multiple poses into one entry. \
+Example main array for mobility:
+  [
+    {"duration_min": 1, "zone": "Stretch", "description": "Pigeon pose 60s/side"},
+    {"duration_min": 1, "zone": "Stretch", "description": "Downward dog 45s"},
+    {"duration_min": 1, "zone": "Stretch", "description": "Cat-cow 30s"},
+    {"duration_min": 1, "zone": "Stretch", "description": "Hip flexor stretch 45s/side"},
+    {"duration_min": 2, "zone": "Stretch", "description": "Foam roll ITB 60s/side"}
+  ]
+- Warmup and cooldown must be specific (not just "easy warmup").
+- Use the athlete's threshold values to calculate appropriate weights/paces.
+- VALID DISCIPLINES: SWIM, RUN, RIDE_ROAD, RIDE_GRAVEL, STRENGTH, YOGA, MOBILITY
+- Day values: 0=Monday through 6=Sunday.
 """
 
 
@@ -794,7 +906,8 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
                     batch_prompt += (
                         f"\nPlan starts on {start_date}. "
                         f"Week {batch_start} starts on {start_date + timedelta(weeks=batch_start - 1)}.\n"
-                        f"Keep descriptions ≤ 5 words. Include 5-7 workouts per week."
+                        f"Include 5-7 workouts per week with FULL detailed content "
+                        f"(exercise names, sets, reps, weights, paces, rest periods)."
                     )
 
                     # Add athlete thresholds for zone calculation
@@ -802,6 +915,18 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
                         batch_prompt += f"\nFTP: {profile.ftp_watts}W"
                     if profile.threshold_pace_sec_per_km:
                         batch_prompt += f"\nThreshold pace: {_fmt_pace(profile.threshold_pace_sec_per_km)}"
+                    if profile.swim_css_sec_per_100m:
+                        batch_prompt += f"\nSwim CSS: {_fmt_swim_pace(profile.swim_css_sec_per_100m)}"
+                    if profile.max_hr:
+                        batch_prompt += f"\nMax HR: {profile.max_hr}"
+                    if profile.squat_1rm_kg:
+                        batch_prompt += f"\nSquat 1RM: {profile.squat_1rm_kg}kg"
+                    if profile.deadlift_1rm_kg:
+                        batch_prompt += f"\nDeadlift 1RM: {profile.deadlift_1rm_kg}kg"
+                    if profile.bench_1rm_kg:
+                        batch_prompt += f"\nBench 1RM: {profile.bench_1rm_kg}kg"
+                    if profile.weight_kg:
+                        batch_prompt += f"\nBody weight: {profile.weight_kg}kg"
                     if profile.notes:
                         batch_prompt += f"\nAthlete notes: {profile.notes}"
 
