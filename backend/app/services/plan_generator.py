@@ -173,7 +173,11 @@ OUTPUT FORMAT — valid JSON only, no markdown fences, no prose outside JSON.
 
 RULES:
 - Weekly workout durations must not exceed the weekly_hours_budget by more \
-than 10%.
+- Weekly workout durations should use the weekly_hours_budget as GUIDANCE, \
+not a hard cap. If the training load requires more volume (e.g. peak weeks, \
+brick sessions, or multiple disciplines in one day), exceed the budget. \
+Multiple workouts per day are allowed and encouraged when appropriate \
+(e.g. morning strength + evening run, or brick bike→run sessions).
 - If the goal has a target_date, the plan end_date must be within 7 days of \
 that date.
 - If no target_date, generate a 12-week progressive plan.
@@ -190,6 +194,10 @@ week. Build the rest of the plan around these fixed days.
 Do NOT truncate or stop early.
 - Keep ALL text fields SHORT: descriptions ≤ 8 words, notes ≤ 10 words. \
 This is critical to fit the full plan in the output.
+- If you include workout "content" objects, keep them minimal (type, \
+target_tss, target_hr_zone only). Detailed warmup/main/cooldown programs \
+will be generated separately. But if you DO include content, it will be \
+preserved — so include it if it fits within the output limit.
 """
 
 
@@ -642,8 +650,8 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
 
     # Compute expected season length
     today = date.today()
-    days_until_monday = (7 - today.weekday()) % 7
-    start_date = today + timedelta(days=days_until_monday)
+    # Start from Monday of current week so plan includes today
+    start_date = today - timedelta(days=today.weekday())
 
     race_dates = [
         date.fromisoformat(str(r.target_date))
@@ -664,11 +672,11 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
             f"IMPORTANT: The season is {expected_weeks} weeks long. "
             f"Generate the FULL plan with ALL {expected_weeks} weeks of workouts. "
             f"Keep descriptions very short (≤ 5 words each) to fit everything.\n"
-            f"CRITICAL: Do NOT include detailed 'content' objects for each workout. "
-            f"Only include: day, discipline, name, builder_type, duration_minutes, "
-            f"estimated_tss, and a short description (≤ 5 words). "
-            f"The detailed workout programs will be generated separately later. "
-            f"This keeps the response small enough to fit all {expected_weeks} weeks."
+            f"For each workout, include at minimum: day, discipline, name, "
+            f"builder_type, duration_minutes, estimated_tss, and description. "
+            f"You MAY include a minimal 'content' object (type, target_tss, "
+            f"target_hr_zone) if it fits. Detailed warmup/main/cooldown will be "
+            f"generated separately — prioritise fitting ALL {expected_weeks} weeks."
         )
 
         print(f"[PLAN-GEN] Calling OpenAI...")
@@ -853,8 +861,8 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
 
     # Compute expected season length
     today = date.today()
-    days_until_monday = (7 - today.weekday()) % 7
-    start_date = today + timedelta(days=days_until_monday)
+    # Start from Monday of current week so plan includes today
+    start_date = today - timedelta(days=today.weekday())
 
     race_dates = [
         date.fromisoformat(str(r.target_date))
