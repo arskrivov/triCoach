@@ -369,10 +369,21 @@ export default function WorkoutHubScreen() {
     setGeneratingPlan(true);
     setError(null);
     try {
-      await api.post("/plans/generate", {});
-      await fetchData();
+      const res = await api.post("/plans/generate", {}, { timeout: 300000 }); // 5 min timeout
+      const plan = res.data;
+      // Check if plan was created but has no workouts (AI generation failed)
+      if (plan && plan.workouts && plan.workouts.length === 0) {
+        setError("Plan generation produced no workouts. The AI may have timed out. Please try again.");
+      } else {
+        await fetchData();
+      }
     } catch (err: unknown) {
-      setError(extractApiError(err).message);
+      const apiErr = extractApiError(err);
+      if (apiErr.message?.includes("timeout") || apiErr.message?.includes("ECONNABORTED")) {
+        setError("Plan generation timed out. This can happen with long plans. Please try again.");
+      } else {
+        setError(apiErr.message);
+      }
     } finally {
       setGeneratingPlan(false);
     }

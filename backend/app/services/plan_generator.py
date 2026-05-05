@@ -777,6 +777,14 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
 
     print(f"[PLAN-GEN] SUCCESS: {plan_name} — {total_weeks} weeks, {len(created_workouts)} workouts")
 
+    # If no workouts were created, the AI response was malformed — clean up and error
+    if not created_workouts:
+        await sb.table("training_plans").delete().eq("id", plan_id).execute()
+        raise HTTPException(
+            status_code=500,
+            detail="Plan generation failed — the AI did not produce any workouts. Please try again.",
+        )
+
     # Auto-sync upcoming workouts to Garmin (next 14 days)
     upcoming_workout_ids = [
         w["id"] for w in created_workouts
