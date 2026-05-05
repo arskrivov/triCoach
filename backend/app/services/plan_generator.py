@@ -492,9 +492,11 @@ def parse_plan_response(ai_text: str) -> dict:
                 # Remove opening fence (possibly with language tag)
                 first_newline = cleaned.index("\n")
                 cleaned = cleaned[first_newline + 1:]
+            # Remove closing fence (handle trailing whitespace/newlines)
+            cleaned = cleaned.rstrip()
             if cleaned.endswith("```"):
-                cleaned = cleaned[:-3]
-            plan_data = json.loads(cleaned.strip())
+                cleaned = cleaned[:-3].rstrip()
+            plan_data = json.loads(cleaned)
         except (json.JSONDecodeError, ValueError):
             pass
 
@@ -503,10 +505,25 @@ def parse_plan_response(ai_text: str) -> dict:
         try:
             start = ai_text.index("{")
             end = ai_text.rindex("}") + 1
-            plan_data = json.loads(ai_text[start:end])
-        except (ValueError, json.JSONDecodeError):
-            logger.warning("Failed to parse AI plan response, using empty structure")
-            plan_data = {}
+            json_str = ai_text[start:end]
+            plan_data = json.loads(json_str)
+        except (ValueError, json.JSONDecodeError) as parse_err:
+            # Try fixing common JSON issues: trailing commas
+            try:
+                import re
+                start = ai_text.index("{")
+                end = ai_text.rindex("}") + 1
+                json_str = ai_text[start:end]
+                # Remove trailing commas before } or ]
+                fixed = re.sub(r',\s*([}\]])', r'\1', json_str)
+                plan_data = json.loads(fixed)
+                print(f"[PLAN-GEN] Fixed trailing commas in JSON response")
+            except (ValueError, json.JSONDecodeError) as fix_err:
+                logger.warning("Failed to parse AI plan response, using empty structure")
+                print(f"[PLAN-GEN] Parse error: {fix_err}")
+                print(f"[PLAN-GEN] First 500 chars: {ai_text[:500]}")
+                print(f"[PLAN-GEN] Last 500 chars: {ai_text[-500:]}")
+                plan_data = {}
 
     if not isinstance(plan_data, dict):
         logger.warning("AI plan response is not a dict, using empty structure")
@@ -646,7 +663,12 @@ async def generate_plan(user_id: str, goal_id: str | None, sb: AsyncClient) -> d
             f"{context}\n\n"
             f"IMPORTANT: The season is {expected_weeks} weeks long. "
             f"Generate the FULL plan with ALL {expected_weeks} weeks of workouts. "
-            f"Keep descriptions very short (≤ 5 words each) to fit everything."
+            f"Keep descriptions very short (≤ 5 words each) to fit everything.\n"
+            f"CRITICAL: Do NOT include detailed 'content' objects for each workout. "
+            f"Only include: day, discipline, name, builder_type, duration_minutes, "
+            f"estimated_tss, and a short description (≤ 5 words). "
+            f"The detailed workout programs will be generated separately later. "
+            f"This keeps the response small enough to fit all {expected_weeks} weeks."
         )
 
         print(f"[PLAN-GEN] Calling OpenAI...")
