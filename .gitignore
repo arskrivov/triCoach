@@ -44,3 +44,9 @@ Thumbs.db
 
 # ── Kiro ──────────────────────────────────────────────────────────────────
 .kiro/settings/
+
+
+
+# generated native folders
+*/ios
+*/android
