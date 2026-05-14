@@ -55,9 +55,9 @@ _STEP_REPEAT = {"stepTypeId": 6, "stepTypeKey": "repeat", "displayOrder": 6}
 
 # Condition for rep-based exercises (strength)
 _CONDITION_REPS = {
-    "conditionTypeId": 6,
+    "conditionTypeId": 10,
     "conditionTypeKey": "reps",
-    "displayOrder": 6,
+    "displayOrder": 10,
     "displayable": True,
 }
 
@@ -254,6 +254,99 @@ def _build_repeat_group(
     }
 
 
+def _map_exercise_to_garmin(exercise_name: str) -> dict[str, str] | None:
+    """Map a free-text exercise name to Garmin's exerciseCategory/exerciseName enums.
+
+    Garmin watches display exercise names from these structured fields in the
+    strength training UI. Without them, the watch shows generic "Go" text.
+
+    Returns {"category": "SQUAT", "name": "BARBELL_BACK_SQUAT"} or None.
+    """
+    import re
+    name_lower = re.sub(r"[^a-z\s]", "", exercise_name.lower()).strip()
+
+    # Map common exercises to Garmin enum values
+    # Categories: SQUAT, DEADLIFT, LUNGE, BENCH_PRESS, ROW, PLANK, CURL,
+    #             SHOULDER_PRESS, CALF_RAISE, LEG_CURL, LEG_EXTENSION, etc.
+    _EXERCISE_MAP: dict[str, dict[str, str]] = {
+        # Squats
+        "back squat": {"category": "SQUAT", "name": "BARBELL_BACK_SQUAT"},
+        "front squat": {"category": "SQUAT", "name": "BARBELL_FRONT_SQUAT"},
+        "goblet squat": {"category": "SQUAT", "name": "GOBLET_SQUAT"},
+        "squat": {"category": "SQUAT", "name": "SQUAT"},
+        "bulgarian split squat": {"category": "LUNGE", "name": "DUMBBELL_BULGARIAN_SPLIT_SQUAT"},
+        "split squat": {"category": "LUNGE", "name": "DUMBBELL_BULGARIAN_SPLIT_SQUAT"},
+        # Deadlifts
+        "deadlift": {"category": "DEADLIFT", "name": "BARBELL_DEADLIFT"},
+        "romanian deadlift": {"category": "DEADLIFT", "name": "ROMANIAN_DEADLIFT"},
+        "rdl": {"category": "DEADLIFT", "name": "ROMANIAN_DEADLIFT"},
+        "single leg rdl": {"category": "DEADLIFT", "name": "SINGLE_LEG_ROMANIAN_DEADLIFT"},
+        "singleleg rdl": {"category": "DEADLIFT", "name": "SINGLE_LEG_ROMANIAN_DEADLIFT"},
+        # Lunges
+        "lunge": {"category": "LUNGE", "name": "DUMBBELL_LUNGE"},
+        "walking lunge": {"category": "LUNGE", "name": "WALKING_LUNGE"},
+        "walking lunges": {"category": "LUNGE", "name": "WALKING_LUNGE"},
+        "reverse lunge": {"category": "LUNGE", "name": "REVERSE_LUNGE"},
+        # Bench / Press
+        "bench press": {"category": "BENCH_PRESS", "name": "BARBELL_BENCH_PRESS"},
+        "incline bench press": {"category": "BENCH_PRESS", "name": "INCLINE_BARBELL_BENCH_PRESS"},
+        "dumbbell press": {"category": "BENCH_PRESS", "name": "DUMBBELL_BENCH_PRESS"},
+        "push up": {"category": "BENCH_PRESS", "name": "PUSH_UP"},
+        "pushup": {"category": "BENCH_PRESS", "name": "PUSH_UP"},
+        "push ups": {"category": "BENCH_PRESS", "name": "PUSH_UP"},
+        "pushups": {"category": "BENCH_PRESS", "name": "PUSH_UP"},
+        # Shoulder
+        "overhead press": {"category": "SHOULDER_PRESS", "name": "OVERHEAD_BARBELL_PRESS"},
+        "shoulder press": {"category": "SHOULDER_PRESS", "name": "DUMBBELL_SHOULDER_PRESS"},
+        "lateral raise": {"category": "LATERAL_RAISE", "name": "DUMBBELL_LATERAL_RAISE"},
+        "lateral raises": {"category": "LATERAL_RAISE", "name": "DUMBBELL_LATERAL_RAISE"},
+        # Rows
+        "row": {"category": "ROW", "name": "BARBELL_ROW"},
+        "barbell row": {"category": "ROW", "name": "BARBELL_ROW"},
+        "dumbbell row": {"category": "ROW", "name": "DUMBBELL_ROW"},
+        "bent over row": {"category": "ROW", "name": "BARBELL_ROW"},
+        # Pull
+        "pull up": {"category": "PULL_UP", "name": "PULL_UP"},
+        "pullup": {"category": "PULL_UP", "name": "PULL_UP"},
+        "chin up": {"category": "PULL_UP", "name": "CHIN_UP"},
+        "lat pulldown": {"category": "PULL_UP", "name": "LAT_PULLDOWN"},
+        # Core
+        "plank": {"category": "PLANK", "name": "PLANK"},
+        "dead bug": {"category": "PLANK", "name": "PLANK"},  # closest match
+        "crunch": {"category": "CRUNCH", "name": "CRUNCH"},
+        "sit up": {"category": "CRUNCH", "name": "SIT_UP"},
+        # Legs
+        "calf raise": {"category": "CALF_RAISE", "name": "STANDING_CALF_RAISE"},
+        "calf raises": {"category": "CALF_RAISE", "name": "STANDING_CALF_RAISE"},
+        "leg press": {"category": "LEG_PRESS", "name": "LEG_PRESS"},
+        "leg curl": {"category": "LEG_CURL", "name": "LEG_CURL"},
+        "leg extension": {"category": "LEG_EXTENSION", "name": "LEG_EXTENSION"},
+        "hip thrust": {"category": "HIP_RAISE", "name": "BARBELL_HIP_THRUST"},
+        # Arms
+        "bicep curl": {"category": "CURL", "name": "DUMBBELL_BICEPS_CURL"},
+        "curl": {"category": "CURL", "name": "DUMBBELL_BICEPS_CURL"},
+        "tricep extension": {"category": "TRICEPS_EXTENSION", "name": "DUMBBELL_TRICEPS_EXTENSION"},
+        "dip": {"category": "TRICEPS_EXTENSION", "name": "DIP"},
+        "dips": {"category": "TRICEPS_EXTENSION", "name": "DIP"},
+        # Band work
+        "band pull apart": {"category": "ROW", "name": "BAND_PULL_APART"},
+        "band pull aparts": {"category": "ROW", "name": "BAND_PULL_APART"},
+        "face pull": {"category": "ROW", "name": "FACE_PULL"},
+    }
+
+    # Exact match first
+    if name_lower in _EXERCISE_MAP:
+        return _EXERCISE_MAP[name_lower]
+
+    # Fuzzy match — check longest keys first to avoid partial matches
+    for key in sorted(_EXERCISE_MAP, key=len, reverse=True):
+        if key in name_lower:
+            return _EXERCISE_MAP[key]
+
+    # No match — return None, stepName will be the fallback
+    return None
+
+
 def _build_strength_exercise_step(
     step_order: int,
     exercise_name: str,
@@ -266,7 +359,8 @@ def _build_strength_exercise_step(
     """Build a Garmin strength exercise step with repeat group.
 
     Creates a repeat group (sets) containing an exercise step (reps)
-    and a rest step. The exercise name is shown on the watch face.
+    and a rest step. The exercise name is shown on the watch face via
+    both stepName and exerciseCategory/exerciseName fields.
     """
     # The exercise step (what shows on the watch during the set)
     exercise_step: dict[str, Any] = {
@@ -278,6 +372,13 @@ def _build_strength_exercise_step(
         "targetType": {**_TARGET_NO_TARGET},
         "stepName": exercise_name[:30],  # Garmin shows this on the watch face
     }
+
+    # Add exerciseCategory and exerciseName for Garmin's strength UI
+    garmin_exercise = _map_exercise_to_garmin(exercise_name)
+    if garmin_exercise:
+        exercise_step["exerciseCategory"] = garmin_exercise["category"]
+        exercise_step["exerciseName"] = garmin_exercise["name"]
+
     if description:
         exercise_step["description"] = description
     if weight_kg:
