@@ -323,6 +323,7 @@ export default function CoachScreen() {
                   styles.userMessageText,
                   { color: colors.primaryForeground },
                 ]}
+                selectable
               >
                 {item.content}
               </Text>
@@ -330,7 +331,17 @@ export default function CoachScreen() {
               // Show typing indicator for empty assistant message (streaming)
               <TypingDots color={colors.mutedForeground} />
             ) : (
-              <Markdown style={markdownStyles}>{item.content}</Markdown>
+              <View>
+                <Markdown style={markdownStyles} mergeStyle>{item.content}</Markdown>
+                {/* Invisible selectable text overlay for copy support */}
+                <Text
+                  selectable
+                  style={styles.selectableOverlay}
+                  accessibilityLabel={item.content}
+                >
+                  {item.content}
+                </Text>
+              </View>
             )}
           </View>
         </View>
@@ -609,6 +620,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   userMessageText: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  // ── Selectable overlay ──
+  selectableOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0,
     fontSize: 15,
     lineHeight: 22,
   },

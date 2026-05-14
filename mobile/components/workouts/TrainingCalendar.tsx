@@ -165,6 +165,11 @@ function WorkoutRow({ workout, status, onPress }: {
         <Text style={[styles.workoutName, { color: colors.foreground }]} numberOfLines={1}>
           {workout.name || "Untitled Workout"}
         </Text>
+        {workout.description ? (
+          <Text style={[styles.workoutDesc, { color: colors.mutedForeground }]} numberOfLines={1}>
+            {workout.description}
+          </Text>
+        ) : null}
         <View style={styles.workoutMeta}>
           <Text style={[styles.workoutStat, { color: colors.mutedForeground }]}>
             {formatDuration(workout.estimated_duration_seconds)}
@@ -193,7 +198,7 @@ export function TrainingCalendar({
   const colors = useThemeColors();
   const today = todayStr();
 
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(todayStr());
   const [visibleMonth, setVisibleMonth] = useState(today);
 
   const markedDates = useMemo(
@@ -239,7 +244,9 @@ export function TrainingCalendar({
   }, []);
 
   const filterLabel = selectedDate
-    ? `Selected: ${formatDayHeader(selectedDate)}`
+    ? selectedDate === today
+      ? `Today: ${formatDayHeader(selectedDate)}`
+      : `Selected: ${formatDayHeader(selectedDate)}`
     : "All workouts this month";
 
   // Build flat list data
@@ -348,6 +355,7 @@ const styles = StyleSheet.create({
   workoutIcon: { fontSize: 20, marginRight: 12 },
   workoutInfo: { flex: 1 },
   workoutName: { fontSize: 15, fontWeight: "600" },
+  workoutDesc: { fontSize: 12, marginTop: 2 },
   workoutMeta: { flexDirection: "row", gap: 10, marginTop: 3 },
   workoutStat: { fontSize: 12, fontWeight: "500" },
   workoutStatus: { fontSize: 12, fontWeight: "700" },

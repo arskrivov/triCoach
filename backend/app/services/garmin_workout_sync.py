@@ -160,43 +160,73 @@ def _build_step(
     }
     if description:
         step["description"] = description
-        # Extract a short name for the watch face display.
-        # Garmin watches show stepName during the workout, not description.
-        # For strength exercises like "3x10 Bulgarian split squats, 60s rest"
-        # extract just the exercise name part.
+        # stepName is what the Garmin watch shows during execution.
+        # Without it, the watch shows "Go, below HR < Xbpm" which is useless.
         step_name = _extract_step_name(description)
         if step_name:
             step["stepName"] = step_name
+        else:
+            # Fallback: use first 30 chars of description
+            step["stepName"] = description[:30]
+    else:
+        # Even without description, set a meaningful stepName from step type
+        type_key = step_type.get("stepTypeKey", "interval")
+        type_labels = {
+            "warmup": "Warm-up",
+            "cooldown": "Cool-down",
+            "interval": "Main set",
+            "recovery": "Recovery",
+            "rest": "Rest",
+        }
+        step["stepName"] = type_labels.get(type_key, "Go")
 
     return step
 
 
 def _extract_step_name(description: str) -> str | None:
-    """Extract a short exercise name from a workout step description.
+    """Extract a short exercise/step name for Garmin watch face display.
+
+    The watch shows stepName as the primary label during execution. Without it,
+    Garmin defaults to showing "Go, below HR < Xbpm" which is useless.
 
     Handles patterns like:
     - "3x10 Bulgarian split squats (bodyweight), 60s rest" → "Bulgarian split squats"
-    - "5 min stationary bike (light resistance)" → "Stationary bike"
+    - "Steady run at 5:30-5:45/km, conversational pace" → "Steady run"
+    - "8x100m @ CSS pace (1:45/100m), 15s rest" → "8x100m @ CSS pace"
+    - "Pigeon pose 90s each side" → "Pigeon pose"
     - "Foam roll ITB and glutes" → "Foam roll ITB and glutes"
+    - "Z2 endurance ride at 150-175W" → "Z2 endurance ride"
     """
     if not description:
         return None
 
+    import re
     text = description.strip()
 
-    # Remove leading sets×reps pattern: "3x10 ", "2x45s ", "3x12 "
-    import re
+    # Remove leading sets×reps pattern for strength: "3x10 ", "2x45s "
     text = re.sub(r"^\d+x\d+s?\s+", "", text)
 
-    # Remove parenthetical notes: "(bodyweight or 10kg dumbbells)"
+    # Remove parenthetical notes: "(bodyweight or 10kg dumbbells)", "(1:45/100m)"
     text = re.sub(r"\s*\([^)]*\)", "", text)
 
     # Remove trailing rest/duration info: ", 60s rest", ", 45s rest"
     text = re.sub(r",\s*\d+s\s+rest.*$", "", text, flags=re.IGNORECASE)
 
-    # Remove trailing instructions after comma: ", focus on left side..."
-    text = re.sub(r",\s+focus\s+.*$", "", text, flags=re.IGNORECASE)
-    text = re.sub(r",\s+slow\s+.*$", "", text, flags=re.IGNORECASE)
+    # Remove trailing comma clauses early (conversational, focus, etc.)
+    text = re.sub(r",\s+(?:focus|slow|conversational|keep|maintain|gentle|light).*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r",\s*(?:zone|Z)\d.*$", "", text, flags=re.IGNORECASE)
+
+    # Remove "at X:XX/km" pace targets (handles ranges like 5:30-5:45/km)
+    text = re.sub(r"\s+at\s+\d+:\d+[^,]*$", "", text, flags=re.IGNORECASE)
+
+    # Remove "at XX-XXW" or "at XX% FTP" power/percentage targets
+    text = re.sub(r"\s+at\s+\d+[-–]?\d*\s*(?:%|W).*$", "", text, flags=re.IGNORECASE)
+
+    # Remove "@ XX% 1RM/FTP" load targets
+    text = re.sub(r"\s+@\s*\d+%?\s*(?:1RM|FTP).*$", "", text, flags=re.IGNORECASE)
+
+    # Remove "with Xs walk/jog recovery" suffixes
+    text = re.sub(r"\s+with\s+\d+.*$", "", text, flags=re.IGNORECASE)
 
     # Truncate to 30 chars for watch display
     text = text.strip()
@@ -322,6 +352,9 @@ def _parse_strength_exercise(description: str) -> dict[str, Any]:
     rest_match = re.search(r"(\d+)s\s+rest", description)
     if rest_match:
         result["rest_seconds"] = int(rest_match.group(1))
+
+    # Strip parenthetical notes from name: "(bodyweight)", "(each side)"
+    result["name"] = re.sub(r"\s*\([^)]*\)", "", result["name"]).strip()
 
     # Truncate name for watch display
     if len(result["name"]) > 30:

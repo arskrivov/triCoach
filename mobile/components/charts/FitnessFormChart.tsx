@@ -41,6 +41,13 @@ function MiniSparkline({
 }) {
   if (values.length < 2) return null;
 
+  // Compute dynamic range to handle negative values (e.g. TSB -30 to +20)
+  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values);
+  const padding = Math.max(1, (maxVal - minVal) * 0.1);
+  const yMin = Math.floor(minVal - padding);
+  const yMax = Math.ceil(maxVal + padding);
+
   const data = values.map((v) => ({ value: v }));
 
   return (
@@ -59,6 +66,8 @@ function MiniSparkline({
       hideAxesAndRules
       adjustToWidth
       disableScroll
+      yAxisOffset={yMin}
+      maxValue={yMax - yMin}
     />
   );
 }

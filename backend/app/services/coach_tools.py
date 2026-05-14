@@ -334,12 +334,18 @@ COACH_TOOLS = [
                         },
                         "main": {
                             "type": "array",
+                            "description": "STRENGTH: use {exercise, sets, reps, weight, rest_sec} per exercise. ENDURANCE: use {duration_min, zone, description}. MOBILITY: use {duration_min, zone, description} with pose name first.",
                             "items": {
                                 "type": "object",
                                 "properties": {
                                     "duration_min": {"type": "integer"},
                                     "zone": {"type": "string"},
                                     "description": {"type": "string"},
+                                    "exercise": {"type": "string", "description": "Exercise name (strength)"},
+                                    "sets": {"type": "integer"},
+                                    "reps": {"type": "integer"},
+                                    "weight": {"type": "string", "description": "Load: '70kg', 'bodyweight', 'band'"},
+                                    "rest_sec": {"type": "integer", "description": "Rest between sets (seconds)"},
                                     "repeats": {"type": "integer"},
                                     "rest_min": {"type": "number"},
                                 },
@@ -415,12 +421,18 @@ COACH_TOOLS = [
                         },
                         "main": {
                             "type": "array",
+                            "description": "STRENGTH: use {exercise, sets, reps, weight, rest_sec} per exercise. ENDURANCE: use {duration_min, zone, description}. MOBILITY: use {duration_min, zone, description} with pose name first.",
                             "items": {
                                 "type": "object",
                                 "properties": {
                                     "duration_min": {"type": "integer"},
                                     "zone": {"type": "string"},
                                     "description": {"type": "string"},
+                                    "exercise": {"type": "string", "description": "Exercise name (strength)"},
+                                    "sets": {"type": "integer"},
+                                    "reps": {"type": "integer"},
+                                    "weight": {"type": "string", "description": "Load: '70kg', 'bodyweight', 'band'"},
+                                    "rest_sec": {"type": "integer", "description": "Rest between sets (seconds)"},
                                     "repeats": {"type": "integer"},
                                     "rest_min": {"type": "number"},
                                 },

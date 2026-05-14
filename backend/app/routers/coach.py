@@ -157,14 +157,28 @@ WORKOUT PROGRAM REQUIREMENTS:
   `type`, `target_tss`, `target_hr_zone`, `warmup`, `main`, `cooldown`, `notes`.
 - `warmup` and `cooldown` must be objects with `duration_min`, `zone`,
   `description`.
-- `main` must be an array of objects. Each item must include `duration_min`,
-  `zone`, and a specific `description`.
+- `main` format depends on discipline:
+
+  STRENGTH — use structured exercise format (renders exercise names on Garmin watch):
+    "main": [
+      {"exercise": "Back Squat", "sets": 3, "reps": 8, "weight": "70kg", "rest_sec": 90},
+      {"exercise": "Romanian Deadlift", "sets": 3, "reps": 10, "weight": "60kg", "rest_sec": 90},
+      {"exercise": "Plank", "sets": 3, "reps": 45, "weight": "", "rest_sec": 30}
+    ]
+    NEVER use description-only format for strength. Always use exercise/sets/reps.
+
+  ENDURANCE (run/ride/swim) — use description format:
+    "main": [{"duration_min": 30, "zone": "Z2", "description": "Steady run at 5:30/km"}]
+
+  MOBILITY/YOGA — use description format with pose name first:
+    "main": [{"duration_min": 2, "zone": "Stretch", "description": "Pigeon pose 90s each side"}]
+
 - Be specific by discipline:
-  - strength: name exact exercises, sets, reps, load, rest
-  - run: give pace, intervals, or distance targets
-  - ride: give power/HR targets
-  - swim: give distance/interval structure
-  - mobility/yoga: name exact poses/drills and hold times
+  - strength: name exact exercises, sets, reps, load, rest using structured format
+  - run: give pace, intervals, or distance targets in description
+  - ride: give power/HR targets in description
+  - swim: give distance/interval structure in description
+  - mobility/yoga: name exact poses/drills and hold times in description
 - Avoid vague content like "core work", "easy ride", or "mobility session"
   without specifics.
 - Use canonical discipline values exactly in tool calls:

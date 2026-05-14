@@ -34,24 +34,41 @@ function formatDateLabel(dateStr: string): string {
 export function RecoveryTrendChart({ data, height = 200 }: RecoveryTrendChartProps) {
   const colors = useThemeColors();
 
-  const { sleepData, hrvData, hrData } = useMemo(() => {
+  const { sleepData, hrvData, hrData, yAxisMin, yAxisMax } = useMemo(() => {
     const sleep: Array<{ value: number; label?: string; date?: string }> = [];
     const hrv: Array<{ value: number }> = [];
     const hr: Array<{ value: number }> = [];
 
+    let allValues: number[] = [];
+
     data.forEach((point, i) => {
       const showLabel =
         i === 0 || i === data.length - 1 || i === Math.floor(data.length / 2);
+      const sleepVal = point.sleep_score ?? 0;
+      const hrvVal = point.hrv ?? 0;
+      const hrVal = point.resting_hr ?? 0;
+
       sleep.push({
-        value: point.sleep_score ?? 0,
+        value: sleepVal,
         label: showLabel ? formatDateLabel(point.date) : "",
         date: formatDateLabel(point.date),
       });
-      hrv.push({ value: point.hrv ?? 0 });
-      hr.push({ value: point.resting_hr ?? 0 });
+      hrv.push({ value: hrvVal });
+      hr.push({ value: hrVal });
+
+      if (sleepVal > 0) allValues.push(sleepVal);
+      if (hrvVal > 0) allValues.push(hrvVal);
+      if (hrVal > 0) allValues.push(hrVal);
     });
 
-    return { sleepData: sleep, hrvData: hrv, hrData: hr };
+    // Dynamic Y-axis range — don't start at 0, pad 10% below min
+    const minVal = allValues.length > 0 ? Math.min(...allValues) : 0;
+    const maxVal = allValues.length > 0 ? Math.max(...allValues) : 100;
+    const padding = Math.max(5, Math.round((maxVal - minVal) * 0.1));
+    const yMin = Math.max(0, Math.floor((minVal - padding) / 5) * 5); // Round down to nearest 5
+    const yMax = Math.ceil((maxVal + padding) / 5) * 5; // Round up to nearest 5
+
+    return { sleepData: sleep, hrvData: hrv, hrData: hr, yAxisMin: yMin, yAxisMax: yMax };
   }, [data]);
 
   if (data.length === 0) {
@@ -92,6 +109,8 @@ export function RecoveryTrendChart({ data, height = 200 }: RecoveryTrendChartPro
         thickness3={2}
         hideDataPoints
         curved
+        yAxisOffset={yAxisMin}
+        maxValue={yAxisMax - yAxisMin}
         yAxisColor={colors.cardBorder}
         xAxisColor={colors.cardBorder}
         yAxisTextStyle={{ color: colors.mutedForeground, fontSize: 10 }}

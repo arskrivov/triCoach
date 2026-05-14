@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Background circle -->
+  <circle cx="60" cy="60" r="56" fill="#1A1A2E" />
+  <!-- Swim wave (blue) -->
+  <path d="M25 55 Q35 48 45 55 Q55 62 65 55" stroke="#4FC3F7" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <!-- Bike wheel (orange) -->
+  <circle cx="72" cy="68" r="12" stroke="#FF8A65" stroke-width="3" fill="none"/>
+  <circle cx="72" cy="68" r="2" fill="#FF8A65"/>
+  <!-- Run figure (green) -->
+  <path d="M38 42 L42 55 L48 65 M42 55 L36 65 M38 42 L44 48 M38 42 L33 48" stroke="#66BB6A" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="38" cy="37" r="4" fill="#66BB6A"/>
+  <!-- Tri text -->
+  <text x="60" y="98" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" letter-spacing="2">TRICOACH</text>
+</svg>

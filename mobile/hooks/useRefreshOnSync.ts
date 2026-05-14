@@ -21,7 +21,9 @@ export function useRefreshOnSync(onRefresh: () => void): void {
   useEffect(() => {
     if (syncVersion > prevVersion.current) {
       prevVersion.current = syncVersion;
-      onRefresh();
+      // Small delay to ensure backend data is fully committed before re-fetch
+      const timer = setTimeout(() => onRefresh(), 500);
+      return () => clearTimeout(timer);
     }
   }, [syncVersion, onRefresh]);
 }

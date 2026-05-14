@@ -1,15 +1,15 @@
 /**
- * BriefingCard — Displays the daily AI/heuristic coach briefing.
+ * BriefingCard — Compact daily coach briefing with actionable insights.
  *
- * Shows sleep analysis, activity analysis, up to 2 recommendations, and an
- * optional caution section. When no briefing is available (before 06:00 or
- * no Garmin data), a placeholder message is displayed instead.
+ * Shows a readiness score emoji, sleep insight, training insight, top
+ * recommendation, and optional caution. Designed for glanceability —
+ * athletes check this first thing in the morning.
  *
  * @see Requirements 5.4, 5.5
  */
 
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -17,20 +17,16 @@ import { useThemeColors } from "@/lib/theme";
 import type { DashboardBriefing } from "@/lib/types";
 
 export interface BriefingCardProps {
-  /** The briefing data, or null when no briefing is available. */
   briefing: DashboardBriefing | null;
 }
 
-/**
- * Placeholder shown when no briefing is available.
- */
 function BriefingPlaceholder() {
   const colors = useThemeColors();
 
   return (
     <Card>
       <Text style={[styles.header, { color: colors.foreground }]}>
-        Coach Briefing
+        ☀️ Morning Briefing
       </Text>
       <Text style={[styles.placeholderText, { color: colors.mutedForeground }]}>
         Your daily briefing will appear here after 06:00 once Garmin data is
@@ -42,80 +38,83 @@ function BriefingPlaceholder() {
 
 export function BriefingCard({ briefing }: BriefingCardProps) {
   const colors = useThemeColors();
+  const [expanded, setExpanded] = useState(false);
 
   if (!briefing) {
     return <BriefingPlaceholder />;
   }
 
-  const sourceBadgeText = briefing.source === "ai" ? "AI" : "Heuristic";
-  const displayedRecommendations = briefing.recommendations.slice(0, 2);
+  const primaryRec = briefing.recommendations[0] ?? null;
+  const secondaryRec = briefing.recommendations[1] ?? null;
 
   return (
     <Card>
-      {/* Header row: title + source badge */}
+      {/* Header */}
       <View style={styles.headerRow}>
         <Text style={[styles.header, { color: colors.foreground }]}>
-          Coach Briefing
+          ☀️ Morning Briefing
         </Text>
         <Badge
-          text={sourceBadgeText}
+          text={briefing.source === "ai" ? "AI" : "Auto"}
           color={briefing.source === "ai" ? colors.primary : colors.mutedForeground}
         />
       </View>
 
-      {/* Sleep analysis */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-          Sleep
-        </Text>
-        <Text style={[styles.sectionText, { color: colors.foreground }]}>
+      {/* Sleep insight — single line */}
+      <View style={styles.insightRow}>
+        <Text style={styles.insightIcon}>😴</Text>
+        <Text style={[styles.insightText, { color: colors.foreground }]} numberOfLines={expanded ? undefined : 2}>
           {briefing.sleep_analysis}
         </Text>
       </View>
 
-      {/* Activity analysis */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-          Activity
-        </Text>
-        <Text style={[styles.sectionText, { color: colors.foreground }]}>
+      {/* Training insight — single line */}
+      <View style={styles.insightRow}>
+        <Text style={styles.insightIcon}>🏋️</Text>
+        <Text style={[styles.insightText, { color: colors.foreground }]} numberOfLines={expanded ? undefined : 2}>
           {briefing.activity_analysis}
         </Text>
       </View>
 
-      {/* Recommendations (up to 2) */}
-      {displayedRecommendations.length > 0 && (
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-            Recommendations
+      {/* Primary recommendation */}
+      {primaryRec && (
+        <View style={[styles.recContainer, { backgroundColor: colors.primary + "12" }]}>
+          <Text style={[styles.recText, { color: colors.foreground }]} numberOfLines={expanded ? undefined : 2}>
+            💡 {primaryRec}
           </Text>
-          {displayedRecommendations.map((rec, index) => (
-            <View key={index} style={styles.recommendationRow}>
-              <Text style={[styles.bullet, { color: colors.primary }]}>•</Text>
-              <Text style={[styles.recommendationText, { color: colors.foreground }]}>
-                {rec}
-              </Text>
-            </View>
-          ))}
         </View>
       )}
 
-      {/* Optional caution */}
-      {briefing.caution && (
-        <View
-          style={[
-            styles.cautionContainer,
-            { backgroundColor: colors.statusCaution + "1A" },
-          ]}
-        >
-          <Text style={[styles.cautionLabel, { color: colors.statusCaution }]}>
-            ⚠ Caution
-          </Text>
-          <Text style={[styles.cautionText, { color: colors.foreground }]}>
-            {briefing.caution}
+      {/* Expanded content */}
+      {expanded && secondaryRec && (
+        <View style={[styles.recContainer, { backgroundColor: colors.muted }]}>
+          <Text style={[styles.recText, { color: colors.foreground }]}>
+            💡 {secondaryRec}
           </Text>
         </View>
       )}
+
+      {/* Caution — always visible if present */}
+      {briefing.caution && (
+        <View style={[styles.cautionRow, { backgroundColor: colors.statusCaution + "15" }]}>
+          <Text style={[styles.cautionText, { color: colors.statusCaution }]} numberOfLines={expanded ? undefined : 1}>
+            ⚠️ {briefing.caution}
+          </Text>
+        </View>
+      )}
+
+      {/* Expand/collapse toggle */}
+      <Pressable
+        onPress={() => setExpanded(!expanded)}
+        style={styles.expandButton}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={expanded ? "Show less" : "Show more"}
+      >
+        <Text style={[styles.expandText, { color: colors.primary }]}>
+          {expanded ? "Show less" : "Show more"}
+        </Text>
+      </Pressable>
     </Card>
   );
 }
@@ -125,7 +124,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
+    marginBottom: 12,
   },
   header: {
     fontSize: 17,
@@ -136,48 +135,49 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 8,
   },
-  section: {
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  sectionText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  recommendationRow: {
+  insightRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 6,
-    marginTop: 4,
+    gap: 8,
+    marginBottom: 8,
   },
-  bullet: {
+  insightIcon: {
     fontSize: 16,
-    lineHeight: 20,
-    fontWeight: "700",
+    marginTop: 2,
   },
-  recommendationText: {
+  insightText: {
     fontSize: 14,
     lineHeight: 20,
     flex: 1,
   },
-  cautionContainer: {
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 4,
+  recContainer: {
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 6,
   },
-  cautionLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  cautionText: {
+  recText: {
     fontSize: 14,
     lineHeight: 20,
+    fontWeight: "500",
+  },
+  cautionRow: {
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 8,
+  },
+  cautionText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  expandButton: {
+    alignSelf: "center",
+    marginTop: 10,
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  expandText: {
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

@@ -159,8 +159,8 @@ async def _build_active_plan_section(user_id: str, sb: AsyncClient, today: date)
 
 async def build_context_text(user_id: str, sb: AsyncClient) -> str:
     today = date.today()
+    fourteen_days_ago = today - timedelta(days=14)
     ninety_days_ago = today - timedelta(days=90)
-    seven_days_ago = today - timedelta(days=7)
 
     profile = await get_effective_athlete_profile(user_id, sb)
 
@@ -173,50 +173,65 @@ async def build_context_text(user_id: str, sb: AsyncClient) -> str:
     activities = [ActivityRow(**r) for r in (acts_res.data or [])]
 
     health_res = await sb.table("daily_health").select("*").eq("user_id", user_id).gte(
-        "date", ninety_days_ago.isoformat()
-    ).order("date", desc=False).execute()
+        "date", fourteen_days_ago.isoformat()
+    ).order("date", desc=True).execute()
     health_rows = [DailyHealthRow(**r) for r in (health_res.data or [])]
 
-    # Athlete profile section
-    profile_lines = ["## Athlete Profile"]
+    # ── System persona (front-loaded for GPT-4.1) ──
+    persona = (
+        "You are a world-class triathlon coach with deep expertise in endurance "
+        "training, strength programming, and injury prevention. You train this "
+        "athlete across swim/bike/run, strength, and mobility.\n\n"
+        "# Rules\n"
+        "- Be specific and data-driven. Reference the athlete's actual numbers.\n"
+        "- Keep responses under 150 words unless the athlete asks for detail.\n"
+        "- Use bullet points for recommendations.\n"
+        "- When modifying the plan, use tools — don't just describe changes.\n"
+        "- Reason about cross-discipline load: heavy squats affect next-day run, "
+        "skipped mobility compounds injury risk.\n"
+        "- Today is " + today.isoformat() + " (" + _day_name(today.weekday()) + ").\n"
+    )
+
+    # ── Athlete profile ──
+    profile_lines = ["# Athlete Profile"]
     if profile.ftp_watts:
-        profile_lines.append(f"- FTP: {profile.ftp_watts} W")
+        profile_lines.append(f"- FTP: {profile.ftp_watts}W")
     if profile.threshold_pace_sec_per_km:
         profile_lines.append(f"- Threshold pace: {_fmt_pace(profile.threshold_pace_sec_per_km)}")
     if profile.swim_css_sec_per_100m:
         profile_lines.append(f"- Swim CSS: {_fmt_swim_pace(profile.swim_css_sec_per_100m)}")
     if profile.max_hr:
-        profile_lines.append(f"- Max HR: {profile.max_hr} bpm")
+        profile_lines.append(f"- Max HR: {profile.max_hr}")
     if profile.resting_hr:
-        profile_lines.append(f"- Resting HR: {profile.resting_hr} bpm")
+        profile_lines.append(f"- Resting HR: {profile.resting_hr}")
     if profile.weight_kg:
-        profile_lines.append(f"- Weight: {profile.weight_kg} kg")
+        profile_lines.append(f"- Weight: {profile.weight_kg}kg")
     if profile.squat_1rm_kg:
-        profile_lines.append(f"- Squat 1RM: {profile.squat_1rm_kg} kg")
+        profile_lines.append(f"- Squat 1RM: {profile.squat_1rm_kg}kg")
     if profile.deadlift_1rm_kg:
-        profile_lines.append(f"- Deadlift 1RM: {profile.deadlift_1rm_kg} kg")
+        profile_lines.append(f"- Deadlift 1RM: {profile.deadlift_1rm_kg}kg")
     if profile.bench_1rm_kg:
-        profile_lines.append(f"- Bench 1RM: {profile.bench_1rm_kg} kg")
+        profile_lines.append(f"- Bench 1RM: {profile.bench_1rm_kg}kg")
     if profile.overhead_press_1rm_kg:
-        profile_lines.append(f"- OHP 1RM: {profile.overhead_press_1rm_kg} kg")
-    profile_lines.append(f"- Mobility target: {profile.mobility_sessions_per_week_target} sessions/week")
+        profile_lines.append(f"- OHP 1RM: {profile.overhead_press_1rm_kg}kg")
+    profile_lines.append(f"- Mobility target: {profile.mobility_sessions_per_week_target}/week")
     if profile.notes:
-        profile_lines.append(f"- Athlete notes: {profile.notes}")
+        profile_lines.append(f"- Notes: {profile.notes}")
 
-    # Goals
-    goals_lines = ["## Goals"]
+    # ── Goals ──
+    goals_lines = ["# Goals"]
     if goals:
         for g in goals:
             line = f"- {g.description}"
             if g.target_date:
                 line += f" (target: {g.target_date})"
             if g.weekly_volume_km:
-                line += f" — {g.weekly_volume_km} km/week"
+                line += f" — {g.weekly_volume_km}km/week"
             goals_lines.append(line)
     else:
         goals_lines.append("No goals set.")
 
-    # 12-week training summary
+    # ── 12-week training volume summary (compressed) ──
     weeks: dict[date, dict] = {}
     for a in activities:
         act_date = date.fromisoformat(str(a.start_time)[:10])
@@ -238,19 +253,23 @@ async def build_context_text(user_id: str, sb: AsyncClient) -> str:
         w["tss"] += a.tss or 0
 
     weekly_lines = [
-        "## 12-Week Training Summary",
-        "Week | Swim km | Run km | Ride km | Strength | Mobility | TSS",
+        "# 12-Week Volume",
+        "Week | Swim | Run | Ride | Str | Mob | TSS",
     ]
     for ws in sorted(weeks)[-12:]:
         w = weeks[ws]
         weekly_lines.append(
-            f"{ws} | {w['swim_km']:.1f} | {w['run_km']:.1f} | {w['ride_km']:.1f} "
+            f"{ws} | {w['swim_km']:.0f}km | {w['run_km']:.0f}km | {w['ride_km']:.0f}km "
             f"| {w['strength']} | {w['mobility']} | {w['tss']:.0f}"
         )
 
-    # Activity history
-    act_lines = ["## Activity History (last 90 days)"]
-    for a in activities:
+    # ── Recent activity detail (last 14 days only — high signal) ──
+    recent_activities = [
+        a for a in activities
+        if date.fromisoformat(str(a.start_time)[:10]) >= fourteen_days_ago
+    ]
+    act_lines = ["# Recent Activities (14 days)"]
+    for a in recent_activities:
         d = str(a.start_time)[:10]
         dur = _fmt_dur(a.duration_seconds)
         if a.discipline in ("RUN", "SWIM", "RIDE_ROAD", "RIDE_GRAVEL"):
@@ -267,47 +286,52 @@ async def build_context_text(user_id: str, sb: AsyncClient) -> str:
         else:
             act_lines.append(f"{d} | {a.discipline} | {dur} | {a.session_type or ''}".strip(" |"))
 
-    # Health history
-    health_lines = ["## Health History (last 90 days)", "Date | HRV | Sleep | Body Batt | Resting HR | Steps"]
-    for h in health_rows:
-        hrv = f"{h.hrv_last_night:.0f}" if h.hrv_last_night else "—"
-        sleep = str(h.sleep_score) if h.sleep_score else "—"
-        bb = f"{h.body_battery_low}–{h.body_battery_high}" if h.body_battery_high else "—"
-        rhr = str(h.resting_hr) if h.resting_hr else "—"
-        steps = f"{h.steps:,}" if h.steps else "—"
-        health_lines.append(f"{h.date} | {hrv} | {sleep} | {bb} | {rhr} | {steps}")
+    # ── Health snapshot (14 days — with 7-day averages) ──
+    health_lines = ["# Recovery (14 days)"]
+    if health_rows:
+        # Compute 7-day averages
+        last_7 = health_rows[:7]
+        avg_hrv = sum(h.hrv_last_night or 0 for h in last_7 if h.hrv_last_night) / max(1, sum(1 for h in last_7 if h.hrv_last_night))
+        avg_sleep = sum(h.sleep_score or 0 for h in last_7 if h.sleep_score) / max(1, sum(1 for h in last_7 if h.sleep_score))
+        avg_rhr = sum(h.resting_hr or 0 for h in last_7 if h.resting_hr) / max(1, sum(1 for h in last_7 if h.resting_hr))
+        health_lines.append(f"7-day avg: HRV {avg_hrv:.0f}ms | Sleep {avg_sleep:.0f} | RHR {avg_rhr:.0f}")
+        health_lines.append("Date | HRV | Sleep | RHR | Steps")
+        for h in health_rows[:14]:
+            hrv = f"{h.hrv_last_night:.0f}" if h.hrv_last_night else "—"
+            sleep = str(h.sleep_score) if h.sleep_score else "—"
+            rhr = str(h.resting_hr) if h.resting_hr else "—"
+            steps = f"{h.steps:,}" if h.steps else "—"
+            health_lines.append(f"{h.date} | {hrv} | {sleep} | {rhr} | {steps}")
+    else:
+        health_lines.append("No health data available.")
 
-    # Cross-discipline flags
+    # ── Cross-discipline flags ──
     mobility_last14 = sum(
         1 for a in activities
         if a.discipline in ("YOGA", "MOBILITY")
-        and date.fromisoformat(str(a.start_time)[:10]) >= (today - timedelta(days=14))
+        and date.fromisoformat(str(a.start_time)[:10]) >= fourteen_days_ago
     )
     mob_dates = [date.fromisoformat(str(a.start_time)[:10]) for a in activities if a.discipline in ("YOGA", "MOBILITY")]
     days_since_mob = (today - max(mob_dates)).days if mob_dates else 999
     mg_last14: dict[str, int] = {}
     for a in activities:
         if a.discipline == "STRENGTH" and a.primary_muscle_groups:
-            if date.fromisoformat(str(a.start_time)[:10]) >= (today - timedelta(days=14)):
+            if date.fromisoformat(str(a.start_time)[:10]) >= fourteen_days_ago:
                 for mg in a.primary_muscle_groups:
                     mg_last14[mg] = mg_last14.get(mg, 0) + 1
 
     flags_lines = [
-        "## Cross-Discipline Flags",
-        f"- Days since last mobility session: {days_since_mob}",
-        f"- Mobility sessions (last 14 days): {mobility_last14}",
-        f"- Muscle groups trained (last 14 days): {', '.join(mg_last14.keys()) or 'none'}",
+        "# Flags",
+        f"- Days since mobility: {days_since_mob}",
+        f"- Mobility sessions (14d): {mobility_last14}",
+        f"- Muscle groups trained (14d): {', '.join(f'{k}({v})' for k, v in mg_last14.items()) or 'none'}",
     ]
 
-    # Active training plan section
+    # ── Active training plan ──
     plan_section = await _build_active_plan_section(user_id, sb, today)
 
     sections = [
-        "You are an expert personal coach specialising in triathlon (swim/bike/run), strength training, and yoga/mobility. "
-        "You have full access to the athlete's training history, health metrics, and goals. "
-        "Give specific, data-driven advice. Reference actual numbers from their history. "
-        "Keep responses concise and actionable.",
-        "",
+        persona,
         "\n".join(profile_lines),
         "\n".join(goals_lines),
         "\n".join(weekly_lines),
