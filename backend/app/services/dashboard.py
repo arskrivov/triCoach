@@ -60,6 +60,7 @@ RECOVERY_METRICS = (
 
 BRIEFING_READY_HOUR = 6
 BRIEFING_SUGGESTION_COUNT = 2
+BRIEFING_LOOKAHEAD_DAYS = 7
 
 # ---------------------------------------------------------------------------
 # System prompt for the AI coach briefing (used by _generate_briefing)
@@ -120,6 +121,22 @@ concern.
 workout title.
 - Do not invent workout names or refer to workouts that are not present in \
 `planned_workouts_today`.
+
+UPCOMING WEEK AWARENESS
+The prompt also includes `planned_workouts_lookahead_7d` — a JSON array of \
+sessions scheduled within the next 7 days (excluding today). Use this to \
+reason about pacing across the week:
+- If a key session (long ride, threshold run, race-pace brick) is coming in \
+1-3 days, recommendations today should protect quality for that session — \
+e.g. cap intensity, prioritise sleep, or move easier work earlier.
+- If today is the hardest day this week, mention that explicitly so the \
+athlete sets up the recovery cascade properly.
+- If the next 7 days are back-loaded with TSS, surface that and recommend \
+front-loading recovery practices.
+- Do not list every upcoming workout. Reference at most ONE upcoming session \
+when it directly informs today's decision.
+- Do not invent upcoming workouts; only cite entries present in \
+`planned_workouts_lookahead_7d`.
 
 OUTPUT FORMAT — JSON only, no markdown, no prose outside JSON.
 {

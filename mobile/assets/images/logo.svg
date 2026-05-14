@@ -1,14 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
-  <!-- Background circle -->
-  <circle cx="60" cy="60" r="56" fill="#1A1A2E" />
-  <!-- Swim wave (blue) -->
-  <path d="M25 55 Q35 48 45 55 Q55 62 65 55" stroke="#4FC3F7" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <!-- Bike wheel (orange) -->
-  <circle cx="72" cy="68" r="12" stroke="#FF8A65" stroke-width="3" fill="none"/>
-  <circle cx="72" cy="68" r="2" fill="#FF8A65"/>
-  <!-- Run figure (green) -->
-  <path d="M38 42 L42 55 L48 65 M42 55 L36 65 M38 42 L44 48 M38 42 L33 48" stroke="#66BB6A" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="38" cy="37" r="4" fill="#66BB6A"/>
-  <!-- Tri text -->
-  <text x="60" y="98" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" letter-spacing="2">TRICOACH</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Solid background (no alpha — required for iOS app icons) -->
+  <rect width="1024" height="1024" fill="#0F1729"/>
+
+  <!-- Subtle radial highlight for depth -->
+  <defs>
+    <radialGradient id="bg-glow" cx="50%" cy="38%" r="65%">
+      <stop offset="0%" stop-color="#1E2C4D" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#0F1729" stop-opacity="1"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg-glow)"/>
+
+  <!-- Swim wave — top, cyan -->
+  <path
+    d="M 220 360 Q 320 290 420 360 Q 520 430 620 360 Q 720 290 820 360"
+    stroke="#4FC3F7"
+    stroke-width="44"
+    fill="none"
+    stroke-linecap="round"/>
+
+  <!-- Bike wheel — middle right, orange -->
+  <circle cx="660" cy="620" r="140" stroke="#FF8A65" stroke-width="44" fill="none"/>
+  <circle cx="660" cy="620" r="22" fill="#FF8A65"/>
+
+  <!-- Run figure — middle left, green -->
+  <!-- Head -->
+  <circle cx="320" cy="510" r="42" fill="#66BB6A"/>
+  <!-- Torso -->
+  <path
+    d="M 320 552 L 340 660"
+    stroke="#66BB6A"
+    stroke-width="40"
+    fill="none"
+    stroke-linecap="round"/>
+  <!-- Forward leg kicking up -->
+  <path
+    d="M 340 660 L 290 760"
+    stroke="#66BB6A"
+    stroke-width="40"
+    fill="none"
+    stroke-linecap="round"/>
+  <!-- Back leg pushing off -->
+  <path
+    d="M 340 660 L 410 740"
+    stroke="#66BB6A"
+    stroke-width="40"
+    fill="none"
+    stroke-linecap="round"/>
+  <!-- Forward arm -->
+  <path
+    d="M 320 600 L 270 580"
+    stroke="#66BB6A"
+    stroke-width="36"
+    fill="none"
+    stroke-linecap="round"/>
+  <!-- Back arm -->
+  <path
+    d="M 320 600 L 380 600"
+    stroke="#66BB6A"
+    stroke-width="36"
+    fill="none"
+    stroke-linecap="round"/>
 </svg>

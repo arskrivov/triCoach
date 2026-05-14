@@ -5,7 +5,7 @@ import {
   ThemeProvider,
 } from "@react-navigation/native";
 import { useFonts } from "expo-font";
-import { Redirect, Slot } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
@@ -19,17 +19,18 @@ export {
   ErrorBoundary,
 } from "expo-router";
 
-export const unstable_settings = {
-  // Ensure that reloading keeps a back button present.
-  initialRouteName: "(tabs)",
-};
-
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 /**
- * Root layout — loads fonts, hides splash screen, then wraps the app
- * in AuthProvider and ThemeProvider.
+ * Root layout — loads fonts, hides splash screen once auth is resolved,
+ * then wraps the app in AuthProvider and ThemeProvider.
+ *
+ * Auth gating is implemented with `<Stack.Protected guard={...}>` per the
+ * Expo Router v5+ recommended pattern — this prevents protected routes
+ * from mounting at all while unauthenticated, eliminating the race that
+ * would otherwise let tab screens render briefly before the redirect
+ * kicks in.
  */
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -41,12 +42,6 @@ export default function RootLayout() {
   useEffect(() => {
     if (error) throw error;
   }, [error]);
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
 
   if (!loaded) {
     return null;
@@ -60,19 +55,24 @@ export default function RootLayout() {
 }
 
 /**
- * Inner navigation component that reads auth state and applies theme.
+ * Inner navigation component that reads auth state and renders a
+ * Stack with protected route groups. While auth is still loading,
+ * shows a centered spinner and keeps the splash screen visible.
  *
- * - While the session is loading, shows a centered spinner.
- * - When unauthenticated, redirects to /(auth)/login.
- * - When authenticated, redirects to /(tabs).
- * - Wraps everything in ThemeProvider for light/dark support.
- *
- * Requirement 4.5: While the user is not authenticated, the Navigation_Shell
- * SHALL not be visible and the auth screens SHALL be shown instead.
+ * Requirement 4.5: While the user is not authenticated, the
+ * Navigation_Shell SHALL not be visible and the auth screens
+ * SHALL be shown instead.
  */
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const { session, loading } = useAuth();
+
+  // Hide the splash screen only after both fonts and auth state are ready.
+  useEffect(() => {
+    if (!loading) {
+      SplashScreen.hideAsync();
+    }
+  }, [loading]);
 
   if (loading) {
     return (
@@ -82,21 +82,18 @@ function RootLayoutNav() {
     );
   }
 
-  // When not authenticated, only show auth screens
-  if (!session) {
-    return (
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <Redirect href="/(auth)/login" />
-        <Slot />
-      </ThemeProvider>
-    );
-  }
-
-  // When authenticated, redirect to tabs
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <Redirect href="/(tabs)/dashboard" />
-      <Slot />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Protected guard={!!session}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+        </Stack.Protected>
+
+        <Stack.Protected guard={!session}>
+          <Stack.Screen name="(auth)" />
+        </Stack.Protected>
+      </Stack>
     </ThemeProvider>
   );
 }
