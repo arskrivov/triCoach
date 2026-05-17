@@ -1,22 +1,22 @@
 /**
- * Account screen — Garmin connection management and athlete profile.
+ * Account screen — Athlete profile and app logout.
  *
- * Composes GarminConnectCard and AthleteProfileForm in a ScrollView
- * with pull-to-refresh support.
- *
- * @see Requirements 12.1, 12.7
+ * Shows athlete profile form and a logout button at the bottom.
+ * Garmin connection is handled on the dashboard (one-time onboarding).
  */
 
 import React from "react";
-import { ScrollView, StyleSheet } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { GarminConnectCard } from "@/components/account/GarminConnectCard";
 import { AthleteProfileForm } from "@/components/account/AthleteProfileForm";
+import { Button } from "@/components/ui/Button";
+import { useAuth } from "@/hooks/useAuth";
 import { useThemeColors } from "@/lib/theme";
 
 export default function AccountScreen() {
   const colors = useThemeColors();
+  const { signOut } = useAuth();
 
   return (
     <SafeAreaView
@@ -28,23 +28,23 @@ export default function AccountScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <GarminConnectCard />
         <AthleteProfileForm />
+
+        <View style={styles.logoutSection}>
+          <Button
+            title="Log Out"
+            onPress={signOut}
+            variant="destructive"
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-  },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-    gap: 16,
-    paddingBottom: 32,
-  },
+  safe: { flex: 1 },
+  scroll: { flex: 1 },
+  content: { padding: 16, gap: 16, paddingBottom: 48 },
+  logoutSection: { marginTop: 24 },
 });

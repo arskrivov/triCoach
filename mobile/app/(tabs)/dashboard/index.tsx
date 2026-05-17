@@ -22,6 +22,7 @@ import {
 import { useRouter } from "expo-router";
 
 import { BriefingCard } from "@/components/dashboard/BriefingCard";
+import { GarminSetupBanner } from "@/components/dashboard/GarminSetupBanner";
 import { RecoveryOverview } from "@/components/dashboard/RecoveryOverview";
 import { RecoveryTrendChart } from "@/components/charts/RecoveryTrendChart";
 import { ActivityOverview } from "@/components/dashboard/ActivityOverview";
@@ -162,6 +163,9 @@ export default function DashboardScreen() {
         <DashboardSkeleton />
       ) : data ? (
         <View style={styles.sectionsContainer}>
+          {/* 0. Garmin connect prompt (shows only if not connected) */}
+          <GarminSetupBanner />
+
           {/* 1. Coach Briefing */}
           <BriefingCard briefing={data.briefing} />
 
