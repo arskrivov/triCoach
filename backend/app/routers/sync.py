@@ -104,8 +104,10 @@ async def _run_sync(
     except Exception as exc:
         logger.exception("Garmin sync failed for user %s", current_user.id)
         if is_garmin_auth_error(exc):
+            # 409 (not 401) so mobile clients don't sign the Supabase user out.
+            # The Supabase JWT is still valid; only the Garmin link is broken.
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
+                status_code=status.HTTP_409_CONFLICT,
                 detail="Garmin session expired — please reconnect your Garmin account in Settings.",
             ) from exc
         raise HTTPException(

@@ -207,7 +207,7 @@ class TestRestoreClientRetry:
 
             with pytest.raises(HTTPException) as exc_info:
                 restore_client(session_data)
-            assert exc_info.value.status_code == 401
+            assert exc_info.value.status_code == 409
             mock_client.client._refresh_session.assert_called_once()
 
     @patch("app.services.garmin.time.sleep")

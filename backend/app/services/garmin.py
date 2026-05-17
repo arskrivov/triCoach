@@ -48,8 +48,11 @@ def decrypt_session(s: str) -> dict:
     try:
         return json.loads(_fernet().decrypt(s.encode()))
     except (InvalidToken, Exception) as e:
+        # 409 (not 401): the user IS authenticated; only the linked Garmin
+        # session is broken. Returning 401 here would cause the mobile
+        # axios interceptor to sign the Supabase user out.
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Garmin session expired or invalid — please reconnect",
         ) from e
 
@@ -97,8 +100,9 @@ def restore_client(session_data: dict) -> tuple[Garmin, bool]:
     client = Garmin()
     token_store = session_data.get("token_store") or session_data.get("garth_tokens")
     if not token_store:
+        # 409 instead of 401 — see decrypt_session() for rationale.
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Garmin session expired or invalid — please reconnect your Garmin account in Settings.",
         )
 
@@ -122,8 +126,9 @@ def restore_client(session_data: dict) -> tuple[Garmin, bool]:
             except Exception as exc:
                 last_exc = exc
                 if is_garmin_auth_error(exc):
+                    # 409 instead of 401 — see decrypt_session() for rationale.
                     raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        status_code=status.HTTP_409_CONFLICT,
                         detail="Garmin session expired — please reconnect your Garmin account in Settings.",
                     ) from exc
                 if attempt < max_retries and _is_transient(exc):

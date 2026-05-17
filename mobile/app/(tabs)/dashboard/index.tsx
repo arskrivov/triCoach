@@ -29,6 +29,7 @@ import { UpcomingWorkouts } from "@/components/dashboard/UpcomingWorkouts";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useRefreshOnSync } from "@/hooks/useRefreshOnSync";
+import { useSyncState } from "@/hooks/useSyncState";
 import { useThemeColors } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { extractApiError, isNetworkError, getNetworkErrorMessage } from "@/lib/error-handling";
@@ -69,6 +70,11 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The sync icon lives in the header (see dashboard/_layout.tsx) and stores
+  // failures in the global sync store. Surface them here so users get feedback
+  // (Garmin session expired, network error, etc.) instead of a silent no-op.
+  const syncError = useSyncState().lastError;
 
   const fetchData = useCallback(async () => {
     try {
@@ -138,6 +144,15 @@ export default function DashboardScreen() {
           message={error}
           variant="error"
           onDismiss={() => setError(null)}
+          style={styles.errorAlert}
+        />
+      )}
+
+      {/* Sync error alert — surfaces failures from the header Sync icon. */}
+      {syncError && (
+        <Alert
+          message={syncError}
+          variant="error"
           style={styles.errorAlert}
         />
       )}

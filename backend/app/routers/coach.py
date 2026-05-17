@@ -237,13 +237,17 @@ async def chat(
         try:
             client = OpenAI(api_key=settings.openai_api_key)
 
-            # First call — may produce text, tool calls, or both
+            # First call — may produce text, tool calls, or both.
+            # Budget is generous because a single message can request several
+            # tool calls (e.g. "create a 6-day plan" → 6× add_workout calls,
+            # each carrying ~600–1000 tokens of structured content). gpt-4.1
+            # supports 32k output; we cap at 16k to bound latency/cost.
             response = client.responses.create(
                 model=settings.openai_coach_model,
                 instructions=system_text,
                 input=messages,
                 tools=COACH_TOOLS,
-                max_output_tokens=2048,
+                max_output_tokens=16000,
                 stream=True,
             )
 
@@ -311,12 +315,14 @@ async def chat(
                     _logger.error("Coach followup after tools skipped: missing initial response id")
                 else:
                     try:
+                        # Followup needs enough room to summarise every tool
+                        # result (one bullet per change for multi-day plans).
                         followup = client.responses.create(
                             model=settings.openai_coach_model,
                             instructions=system_text,
                             previous_response_id=response_id,
                             input=tool_outputs,
-                            max_output_tokens=1024,
+                            max_output_tokens=4000,
                             stream=True,
                         )
                         for event in followup:
@@ -329,9 +335,15 @@ async def chat(
                         _logger.error("Coach followup after tools failed: %s", exc)
 
         except Exception as exc:
-            _logger.error("Coach chat stream error: %s", exc)
+            _logger.exception("Coach chat stream error")
             if not collected:
-                err_msg = f"Sorry, something went wrong: {type(exc).__name__}"
+                # Surface the actual message (truncated) so the user — and we
+                # — can diagnose. Falling back to the class name made
+                # everything look like an opaque "APIError".
+                detail = str(exc).strip() or type(exc).__name__
+                if len(detail) > 300:
+                    detail = detail[:297] + "…"
+                err_msg = f"Sorry, something went wrong: {detail}"
                 collected.append(err_msg)
                 yield f"data: {_json.dumps({'token': err_msg})}\n\n"
 
