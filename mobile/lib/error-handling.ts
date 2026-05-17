@@ -56,9 +56,20 @@ export function extractApiError(error: unknown): ApiError {
     if (typeof rawDetail === "string") {
       detail = rawDetail;
     } else if (Array.isArray(rawDetail) && rawDetail.length > 0) {
-      // Extract human-readable messages from validation error array
+      // Extract human-readable messages from validation error array.
+      // Prefix with the field name (last segment of `loc`) when available so
+      // multiple "Field required" entries don't collapse into an opaque
+      // "Field required; Field required".
       detail = rawDetail
-        .map((e: any) => e.msg || e.message || JSON.stringify(e))
+        .map((e: any) => {
+          const msg = e?.msg || e?.message || JSON.stringify(e);
+          const loc = Array.isArray(e?.loc) ? e.loc : null;
+          // FastAPI loc is typically ["body", "<field>"] or ["query", "<field>"];
+          // skip the source segment and use the field name.
+          const field =
+            loc && loc.length > 1 ? String(loc[loc.length - 1]) : null;
+          return field ? `${field}: ${msg}` : msg;
+        })
         .join("; ");
     } else if (rawDetail && typeof rawDetail === "object") {
       detail = (rawDetail as any).msg || (rawDetail as any).message || JSON.stringify(rawDetail);

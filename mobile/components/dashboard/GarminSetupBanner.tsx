@@ -36,7 +36,10 @@ export function GarminSetupBanner() {
     setConnecting(true);
     setError(null);
     try {
-      await api.post("/garmin/connect-and-sync", { email: email.trim(), password });
+      await api.post("/garmin/connect-and-sync", {
+        garmin_email: email.trim(),
+        garmin_password: password,
+      });
       setConnected(true);
       // Trigger dashboard refresh
       useSyncStore.getState().completedSync({ activitiesSynced: 1, healthDaysSynced: 1 });
